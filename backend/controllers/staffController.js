@@ -8,34 +8,18 @@ const { isValidEmail, isValidBusinessHours } = require("../utils/validators");
 
 /**
  * @route   POST /api/staff
- * @desc    Add staff member (invite)
+ * @desc    Add staff member (simplified - no user account required)
  * @access  Private (Admin only)
  */
 const addStaff = async (req, res, next) => {
   try {
-    const {
-      name,
-      email,
-      phone,
-      countryCode,
-      specialization,
-      serviceIds,
-      workingHours,
-      password, // Accept password
-    } = req.body;
+    const { name, phone, specialization, serviceIds } = req.body;
 
     // Validate required fields
-    if (!name || !email) {
+    if (!name) {
       return res.status(400).json({
         success: false,
-        message: "Please provide name and email",
-      });
-    }
-
-    if (!isValidEmail(email)) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide a valid email address",
+        message: "Please provide staff name",
       });
     }
 
@@ -48,80 +32,20 @@ const addStaff = async (req, res, next) => {
       });
     }
 
-    // Check if user already exists
-    let user = await User.findOne({ email: email.toLowerCase() });
-
-    if (user) {
-      // Check if already a staff member of this business
-      if (user.businessId?.toString() === business._id.toString()) {
-        return res.status(400).json({
-          success: false,
-          message: "This user is already a staff member of your business",
-        });
-      }
-
-      // Check if user is admin of another business
-      if (user.role === "admin") {
-        return res.status(400).json({
-          success: false,
-          message: "This user is already an admin of another business",
-        });
-      }
-
-      // Update existing customer to staff
-      if (user.role === "customer") {
-        user.role = "staff";
-        user.businessId = business._id;
-        // Verify email if it wasn't already? Maybe not, safety first.
-        await user.save();
-      }
-    } else {
-      // Create new user account
-      const verificationToken = generateRandomToken();
-      const verificationExpires = new Date(
-        Date.now() + 7 * 24 * 60 * 60 * 1000
-      ); // 7 days
-
-      const userData = {
-        name,
-        email: email.toLowerCase(),
-        phone,
-        countryCode,
-        role: "staff",
-        businessId: business._id,
-        emailVerificationToken: verificationToken,
-        emailVerificationExpires: verificationExpires,
-      };
-
-      if (password) {
-        userData.password = password;
-        userData.emailVerified = true;
-      }
-
-      user = await User.create(userData);
-
-      // Send invitation email ONLY if no password provided
-      if (!password) {
-        try {
-          await sendVerificationEmail(user.email, user.name, verificationToken);
-        } catch (emailError) {
-          console.error("Email sending failed:", emailError);
-        }
-      }
-    }
-
-    // Create staff record
+    // Create staff record directly
     const staff = await Staff.create({
-      userId: user._id,
+      name,
+      phone: phone || "",
       businessId: business._id,
-      specialization,
+      specialization: specialization || "",
       serviceIds: serviceIds || [],
-      workingHours: workingHours || business.workingHours,
+      workingHours: business.workingHours, // Default to business hours
     });
 
-    const populatedStaff = await Staff.findById(staff._id)
-      .populate("userId", "name email phone profilePicture")
-      .populate("serviceIds", "name duration price");
+    const populatedStaff = await Staff.findById(staff._id).populate(
+      "serviceIds",
+      "name duration price"
+    );
 
     res.status(201).json({
       success: true,
@@ -140,20 +64,25 @@ const addStaff = async (req, res, next) => {
  */
 const getStaffMembers = async (req, res, next) => {
   try {
-    const { businessId, isActive } = req.query;
+    let { businessId, isActive } = req.query;
+
+    // If no businessId provided, auto-detect from user
+    if (!businessId) {
+      if (req.user.businessId) {
+        businessId = req.user.businessId.toString();
+      } else if (req.user.role === "admin") {
+        // For admin users, find their business
+        const adminBusiness = await Business.findOne({ adminId: req.user._id });
+        if (adminBusiness) {
+          businessId = adminBusiness._id.toString();
+        }
+      }
+    }
 
     if (!businessId) {
       return res.status(400).json({
         success: false,
-        message: "businessId is required",
-      });
-    }
-
-    // Verify access
-    if (req.user.businessId?.toString() !== businessId) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied",
+        message: "No business found for this user",
       });
     }
 
@@ -220,7 +149,7 @@ const getStaffById = async (req, res, next) => {
  */
 const updateStaff = async (req, res, next) => {
   try {
-    const { specialization, serviceIds } = req.body;
+    const { name, phone, specialization, serviceIds } = req.body;
 
     const staff = await Staff.findById(req.params.id);
 
@@ -241,14 +170,17 @@ const updateStaff = async (req, res, next) => {
     }
 
     // Update fields
+    if (name !== undefined) staff.name = name;
+    if (phone !== undefined) staff.phone = phone;
     if (specialization !== undefined) staff.specialization = specialization;
     if (serviceIds) staff.serviceIds = serviceIds;
 
     await staff.save();
 
-    const updatedStaff = await Staff.findById(staff._id)
-      .populate("userId", "name email phone profilePicture")
-      .populate("serviceIds", "name duration price");
+    const updatedStaff = await Staff.findById(staff._id).populate(
+      "serviceIds",
+      "name duration price"
+    );
 
     res.json({
       success: true,
@@ -502,6 +434,50 @@ const getStaffSchedule = async (req, res, next) => {
   }
 };
 
+/**
+ * @route   GET /api/staff/public/:businessId
+ * @desc    Get staff members for public booking
+ * @access  Public (for customer booking)
+ */
+const getPublicStaffForBooking = async (req, res, next) => {
+  try {
+    const { businessId } = req.params;
+    const { serviceId } = req.query;
+
+    if (!businessId) {
+      return res.status(400).json({
+        success: false,
+        message: "Business ID is required",
+      });
+    }
+
+    // Query: active staff for this business
+    const query = { businessId, isActive: true };
+
+    // If serviceId provided, filter by staff who can provide this service
+    const staffMembers = await Staff.find(query)
+      .select("name specialization serviceIds")
+      .populate("serviceIds", "_id")
+      .sort({ name: 1 });
+
+    // If serviceId filter, only return staff assigned to that service
+    let filteredStaff = staffMembers;
+    if (serviceId) {
+      filteredStaff = staffMembers.filter((s) =>
+        s.serviceIds?.some((svc) => svc._id.toString() === serviceId)
+      );
+    }
+
+    res.json({
+      success: true,
+      count: filteredStaff.length,
+      staff: filteredStaff,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   addStaff,
   getStaffMembers,
@@ -511,4 +487,5 @@ module.exports = {
   assignServices,
   removeStaff,
   getStaffSchedule,
+  getPublicStaffForBooking,
 };

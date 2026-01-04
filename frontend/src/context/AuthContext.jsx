@@ -47,8 +47,18 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     try {
       const response = await api.post("/auth/register", userData);
+      const { accessToken, user: registeredUser } = response.data;
+
+      // Auto-login if accessToken is provided
+      if (accessToken && registeredUser) {
+        localStorage.setItem("accessToken", accessToken);
+        localStorage.setItem("user", JSON.stringify(registeredUser));
+        setUser(registeredUser);
+        setIsAuthenticated(true);
+      }
+
       toast.success(response.data.message || "Registration successful!");
-      return { success: true, data: response.data };
+      return { success: true, user: registeredUser, data: response.data };
     } catch (error) {
       const message = error.response?.data?.message || "Registration failed";
       toast.error(message);
@@ -101,10 +111,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Update user
+  // Update user (also sets authenticated state for OAuth flows)
   const updateUser = (userData) => {
     setUser(userData);
-    localStorage.setItem("user", JSON.stringify(userData));
+    if (userData) {
+      setIsAuthenticated(true);
+      localStorage.setItem("user", JSON.stringify(userData));
+    }
   };
 
   // Check if user has role

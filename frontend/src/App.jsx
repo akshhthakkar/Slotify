@@ -1,11 +1,12 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Toaster } from "react-hot-toast";
+import ConditionalToaster from "./components/common/ConditionalToaster";
 import { AuthProvider } from "./context/AuthContext";
 import {
   ProtectedRoute,
   RoleProtectedRoute,
   PublicRoute,
 } from "./components/auth/ProtectedRoute";
+import { CustomerRoute as StrictCustomerRoute } from "./components/auth/CustomerRoute";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
 import EmailVerificationBanner from "./components/common/EmailVerificationBanner";
@@ -49,7 +50,9 @@ import StaffAvailability from "./pages/StaffAvailability";
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <AuthProvider>
         <div className="min-h-screen flex flex-col bg-gray-50">
           <Navbar />
@@ -113,7 +116,9 @@ function App() {
                 path="/dashboard"
                 element={
                   <ProtectedRoute>
-                    <CustomerDashboard />
+                    <StrictCustomerRoute>
+                      <CustomerDashboard />
+                    </StrictCustomerRoute>
                   </ProtectedRoute>
                 }
               />
@@ -121,7 +126,9 @@ function App() {
                 path="/book/:businessId"
                 element={
                   <ProtectedRoute>
-                    <BookAppointment />
+                    <StrictCustomerRoute>
+                      <BookAppointment />
+                    </StrictCustomerRoute>
                   </ProtectedRoute>
                 }
               />
@@ -129,7 +136,9 @@ function App() {
                 path="/my-appointments"
                 element={
                   <ProtectedRoute>
-                    <MyAppointments />
+                    <StrictCustomerRoute>
+                      <MyAppointments />
+                    </StrictCustomerRoute>
                   </ProtectedRoute>
                 }
               />
@@ -137,7 +146,9 @@ function App() {
                 path="/reschedule/:appointmentId"
                 element={
                   <ProtectedRoute>
-                    <RescheduleAppointment />
+                    <StrictCustomerRoute>
+                      <RescheduleAppointment />
+                    </StrictCustomerRoute>
                   </ProtectedRoute>
                 }
               />
@@ -145,7 +156,9 @@ function App() {
                 path="/profile"
                 element={
                   <ProtectedRoute>
-                    <Profile />
+                    <StrictCustomerRoute>
+                      <Profile />
+                    </StrictCustomerRoute>
                   </ProtectedRoute>
                 }
               />
@@ -153,7 +166,9 @@ function App() {
                 path="/settings"
                 element={
                   <ProtectedRoute>
-                    <Settings />
+                    <StrictCustomerRoute>
+                      <Settings />
+                    </StrictCustomerRoute>
                   </ProtectedRoute>
                 }
               />
@@ -224,7 +239,7 @@ function App() {
 
           <Footer />
         </div>
-        <Toaster position="top-right" />
+        <ConditionalToaster />
       </AuthProvider>
     </BrowserRouter>
   );

@@ -22,7 +22,7 @@ const Features = () => {
   const { isAuthenticated, user } = useAuth();
 
   const getDashboardLink = () => {
-    if (user?.role === "admin") return "/admin/dashboard";
+    if (user?.role === "admin") return "/admin";
     return "/dashboard";
   };
 

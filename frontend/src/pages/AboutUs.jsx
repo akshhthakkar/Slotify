@@ -28,7 +28,7 @@ const AboutUs = () => {
     },
     {
       name: "Daksh Patel",
-      role: "Jha2",
+      role: "Backend Developer",
       description: "Server Architecture & API Design",
       image: "/team/daksh.png",
     },

@@ -1,11 +1,16 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar as CalendarIcon, Clock, ArrowRight } from 'lucide-react';
-import api from '../utils/api';
-import Button from '../components/common/Button';
-import Loading from '../components/common/Loading';
-import { formatDate, formatTime, getDateRange, toISODate } from '../utils/dateHelpers';
-import toast from 'react-hot-toast';
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { Calendar as CalendarIcon, Clock, ArrowRight } from "lucide-react";
+import api from "../utils/api";
+import Button from "../components/common/Button";
+import Loading from "../components/common/Loading";
+import {
+  formatDate,
+  formatTime,
+  getDateRange,
+  toISODate,
+} from "../utils/dateHelpers";
+import toast from "react-hot-toast";
 
 const RescheduleAppointment = () => {
   const { id } = useParams();
@@ -36,8 +41,8 @@ const RescheduleAppointment = () => {
       const response = await api.get(`/appointments/${id}`);
       setAppointment(response.data.appointment);
     } catch (error) {
-      toast.error('Failed to load appointment');
-      navigate('/my-appointments');
+      toast.error("Failed to load appointment");
+      navigate("/my-appointments");
     } finally {
       setLoading(false);
     }
@@ -50,13 +55,15 @@ const RescheduleAppointment = () => {
         businessId: appointment.businessId._id,
         serviceId: appointment.serviceId._id,
         staffId: appointment.staffId._id,
-        date: toISODate(selectedDate)
+        date: toISODate(selectedDate),
       };
 
-      const response = await api.get('/appointments/available-slots', { params });
+      const response = await api.get("/appointments/available-slots", {
+        params,
+      });
       setAvailableSlots(response.data.slots || []);
     } catch (error) {
-      toast.error('Failed to load available slots');
+      toast.error("Failed to load available slots");
       console.error(error);
     } finally {
       setLoadingSlots(false);
@@ -65,7 +72,7 @@ const RescheduleAppointment = () => {
 
   const handleSubmit = async () => {
     if (!selectedDate || !selectedTime) {
-      toast.error('Please select a new date and time');
+      toast.error("Please select a new date and time");
       return;
     }
 
@@ -74,13 +81,15 @@ const RescheduleAppointment = () => {
 
       await api.post(`/appointments/${id}/reschedule`, {
         newDate: toISODate(selectedDate),
-        newStartTime: selectedTime.startTime
+        newStartTime: selectedTime.startTime,
       });
 
-      toast.success('Appointment rescheduled successfully!');
-      navigate('/my-appointments');
+      toast.success("Appointment rescheduled successfully!");
+      navigate("/my-appointments");
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to reschedule appointment');
+      toast.error(
+        error.response?.data?.message || "Failed to reschedule appointment"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -91,7 +100,9 @@ const RescheduleAppointment = () => {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Reschedule Appointment</h1>
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">
+        Reschedule Appointment
+      </h1>
 
       {/* Current Appointment */}
       <div className="card mb-6 bg-gray-50">
@@ -112,7 +123,8 @@ const RescheduleAppointment = () => {
           <div>
             <span className="text-gray-600">Date & Time: </span>
             <span className="font-medium">
-              {formatDate(appointment.appointmentDate, 'MMM d, yyyy')} at {formatTime(appointment.startTime)}
+              {formatDate(appointment.appointmentDate, "MMM d, yyyy")} at{" "}
+              {formatTime(appointment.startTime)}
             </span>
           </div>
         </div>
@@ -123,7 +135,8 @@ const RescheduleAppointment = () => {
         <h2 className="text-lg font-semibold mb-4">Select New Date</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {getDateRange(30).map((date) => {
-            const isSelected = selectedDate && toISODate(date) === toISODate(selectedDate);
+            const isSelected =
+              selectedDate && toISODate(date) === toISODate(selectedDate);
             return (
               <button
                 key={date.toISOString()}
@@ -133,14 +146,20 @@ const RescheduleAppointment = () => {
                 }}
                 className={`p-4 border-2 rounded-lg transition-colors ${
                   isSelected
-                    ? 'border-primary-600 bg-primary-50'
-                    : 'hover:border-primary-500'
+                    ? "border-primary-600 bg-primary-50"
+                    : "hover:border-primary-500"
                 }`}
               >
                 <div className="text-center">
-                  <div className="text-sm text-gray-600">{formatDate(date, 'EEE')}</div>
-                  <div className="text-2xl font-bold">{formatDate(date, 'd')}</div>
-                  <div className="text-sm text-gray-600">{formatDate(date, 'MMM')}</div>
+                  <div className="text-sm text-gray-600">
+                    {formatDate(date, "EEE")}
+                  </div>
+                  <div className="text-2xl font-bold">
+                    {formatDate(date, "d")}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {formatDate(date, "MMM")}
+                  </div>
                 </div>
               </button>
             );
@@ -152,7 +171,7 @@ const RescheduleAppointment = () => {
       {selectedDate && (
         <div className="card mb-6">
           <h2 className="text-lg font-semibold mb-4">
-            Select New Time - {formatDate(selectedDate, 'EEEE, MMMM d, yyyy')}
+            Select New Time - {formatDate(selectedDate, "EEEE, MMMM d, yyyy")}
           </h2>
 
           {loadingSlots ? (
@@ -162,24 +181,63 @@ const RescheduleAppointment = () => {
               No available slots for this date. Please choose another date.
             </p>
           ) : (
-            <div className="grid grid-cols-3 md:grid-cols-5 gap-3 max-h-96 overflow-y-auto">
-              {availableSlots.map((slot, index) => {
-                const isSelected = selectedTime?.startTime === slot.startTime;
-                return (
-                  <button
-                    key={index}
-                    onClick={() => setSelectedTime(slot)}
-                    className={`p-3 border-2 rounded-lg transition-colors ${
-                      isSelected
-                        ? 'border-primary-600 bg-primary-50'
-                        : 'hover:border-primary-500'
-                    }`}
-                  >
-                    <div className="text-center font-medium">{slot.startTime}</div>
-                  </button>
-                );
-              })}
-            </div>
+            <>
+              {/* Legend */}
+              <div className="flex gap-4 mb-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded border-2 border-primary-500 bg-white"></div>
+                  <span className="text-gray-600">Available</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-gray-200"></div>
+                  <span className="text-gray-600">Booked</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-gray-100"></div>
+                  <span className="text-gray-600">Past</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 md:grid-cols-5 gap-3 max-h-96 overflow-y-auto">
+                {availableSlots.map((slot, index) => {
+                  const isSelected = selectedTime?.startTime === slot.startTime;
+                  const isAvailable = slot.status === "available";
+                  const isBooked = slot.status === "booked";
+                  const isPast = slot.status === "past";
+
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => isAvailable && setSelectedTime(slot)}
+                      disabled={!isAvailable}
+                      className={`p-3 border-2 rounded-lg transition-colors ${
+                        isSelected
+                          ? "border-primary-600 bg-primary-50"
+                          : isAvailable
+                          ? "hover:border-primary-500 cursor-pointer"
+                          : isBooked
+                          ? "bg-gray-200 border-gray-200 cursor-not-allowed opacity-75"
+                          : "bg-gray-100 border-gray-100 cursor-not-allowed opacity-50"
+                      }`}
+                    >
+                      <div
+                        className={`text-center font-medium ${
+                          !isAvailable ? "text-gray-500" : ""
+                        }`}
+                      >
+                        {slot.startTime}
+                      </div>
+                      {isBooked && (
+                        <div className="text-xs text-gray-500 mt-1">Booked</div>
+                      )}
+                      {isPast && (
+                        <div className="text-xs text-gray-400 mt-1">Past</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -187,22 +245,28 @@ const RescheduleAppointment = () => {
       {/* Comparison */}
       {selectedDate && selectedTime && (
         <div className="card mb-6 bg-blue-50 border-blue-200">
-          <h2 className="text-lg font-semibold mb-4 text-blue-900">Changes Summary</h2>
+          <h2 className="text-lg font-semibold mb-4 text-blue-900">
+            Changes Summary
+          </h2>
           <div className="flex items-center justify-between text-sm">
             <div className="flex-1">
               <p className="text-gray-600 mb-1">Current</p>
               <p className="font-medium text-gray-900">
-                {formatDate(appointment.appointmentDate, 'MMM d, yyyy')}
+                {formatDate(appointment.appointmentDate, "MMM d, yyyy")}
               </p>
-              <p className="font-medium text-gray-900">{formatTime(appointment.startTime)}</p>
+              <p className="font-medium text-gray-900">
+                {formatTime(appointment.startTime)}
+              </p>
             </div>
             <ArrowRight className="w-6 h-6 text-blue-600 mx-4" />
             <div className="flex-1 text-right">
               <p className="text-gray-600 mb-1">New</p>
               <p className="font-medium text-primary-600">
-                {formatDate(selectedDate, 'MMM d, yyyy')}
+                {formatDate(selectedDate, "MMM d, yyyy")}
               </p>
-              <p className="font-medium text-primary-600">{formatTime(selectedTime.startTime)}</p>
+              <p className="font-medium text-primary-600">
+                {formatTime(selectedTime.startTime)}
+              </p>
             </div>
           </div>
         </div>
@@ -212,7 +276,7 @@ const RescheduleAppointment = () => {
       <div className="flex gap-4">
         <Button
           variant="secondary"
-          onClick={() => navigate('/my-appointments')}
+          onClick={() => navigate("/my-appointments")}
           className="flex-1"
         >
           Cancel
@@ -231,8 +295,8 @@ const RescheduleAppointment = () => {
       {/* Policy Warning */}
       <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
         <p className="text-sm text-yellow-800">
-          <strong>Note:</strong> Rescheduling policies may apply. Please review the business's
-          rescheduling policy before confirming.
+          <strong>Note:</strong> Rescheduling policies may apply. Please review
+          the business's rescheduling policy before confirming.
         </p>
       </div>
     </div>

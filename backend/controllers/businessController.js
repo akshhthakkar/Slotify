@@ -41,7 +41,7 @@ const getAllBusinesses = async (req, res, next) => {
 
     const businesses = await Business.find(query)
       .select(
-        "name slug tagline logo coverPhoto category subcategory address isActive"
+        "name slug tagline logo coverPhoto category subcategory address isActive bookingSettings"
       )
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit))
@@ -121,6 +121,51 @@ const createBusiness = async (req, res, next) => {
       success: true,
       message: "Business created successfully",
       business,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   GET /api/business/public/:id
+ * @desc    Get business by ID (public)
+ * @access  Public
+ */
+const getPublicBusinessById = async (req, res, next) => {
+  try {
+    const business = await Business.findById(req.params.id)
+      .select(
+        "-adminId -stats -verification.document -verification.submittedAt"
+      ) // Exclude sensitive info
+      .populate("adminId", "name email");
+
+    if (!business) {
+      return res.status(404).json({
+        success: false,
+        message: "Business not found",
+      });
+    }
+
+    if (!business.isActive) {
+      return res.status(404).json({
+        success: false,
+        message: "Business is not active",
+      });
+    }
+
+    // Return server time for reliable frontend calculations
+    const timeZone = business.timeZone || "UTC";
+    const serverTime = new Date();
+    const businessTime = new Date(
+      serverTime.toLocaleString("en-US", { timeZone })
+    );
+
+    res.json({
+      success: true,
+      business,
+      serverTime: serverTime.toISOString(),
+      businessTime: businessTime.toISOString(),
     });
   } catch (error) {
     next(error);
@@ -314,6 +359,27 @@ const uploadBusinessImages = async (req, res, next) => {
         caption: caption || "",
         isPrimary: business.photos.length === 0,
       });
+    } else if (type === "document_aadhaar" || type === "document_pan") {
+      const docType = type === "document_aadhaar" ? "aadhaar" : "pan";
+
+      // Upload to secure folder
+      uploadResult = await uploadImage(
+        image,
+        `slotify/businesses/${business._id}/verification/${docType}`,
+        "document"
+      );
+
+      business.verification = {
+        status: "verified",
+        document: {
+          type: docType,
+          fileUrl: uploadResult.url,
+          fileFormat: uploadResult.format === "pdf" ? "pdf" : "image",
+          uploadedAt: new Date(),
+        },
+        submittedAt: new Date(),
+        verifiedAt: new Date(),
+      };
     } else {
       return res.status(400).json({
         success: false,
@@ -544,7 +610,7 @@ const getBusinessesByCategory = async (req, res, next) => {
 
     const businesses = await Business.find(query)
       .select(
-        "name slug tagline logo category subcategory verificationStatus stats"
+        "name slug tagline logo category subcategory verification.status stats"
       )
       .limit(limit * 1)
       .skip((page - 1) * limit)
@@ -576,4 +642,5 @@ module.exports = {
   updateBookingSettings,
   updateOnboardingStep,
   getBusinessesByCategory,
+  getPublicBusinessById,
 };

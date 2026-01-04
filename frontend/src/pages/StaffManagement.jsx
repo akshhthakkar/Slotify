@@ -3,7 +3,7 @@ import api from "../utils/api";
 import Loading from "../components/common/Loading";
 import Modal from "../components/common/Modal";
 import Button from "../components/common/Button";
-import { Plus, Edit2, Trash2, Mail, User, Calendar } from "lucide-react";
+import { Plus, Edit2, Trash2, User, Calendar } from "lucide-react";
 import toast from "react-hot-toast";
 
 const StaffManagement = () => {
@@ -16,10 +16,8 @@ const StaffManagement = () => {
   const [deleting, setDeleting] = useState(null);
 
   const [formData, setFormData] = useState({
-    email: "",
     name: "",
     phone: "",
-    password: "",
     specialization: "",
     serviceIds: [],
   });
@@ -47,10 +45,8 @@ const StaffManagement = () => {
 
   const resetForm = () => {
     setFormData({
-      email: "",
       name: "",
       phone: "",
-      password: "",
       specialization: "",
       serviceIds: [],
     });
@@ -64,10 +60,8 @@ const StaffManagement = () => {
 
   const openEditModal = (member) => {
     setFormData({
-      email: member.userId?.email || "",
-      name: member.userId?.name || "",
-      phone: member.userId?.phone || "",
-      password: "", // Don't populate password for security
+      name: member.name || "",
+      phone: member.phone || "",
       specialization: member.specialization || "",
       serviceIds: member.serviceIds?.map((s) => s._id || s) || [],
     });
@@ -81,16 +75,16 @@ const StaffManagement = () => {
       setSaving(true);
       if (editingStaff) {
         await api.put(`/staff/${editingStaff._id}`, {
+          name: formData.name,
+          phone: formData.phone,
           specialization: formData.specialization,
           serviceIds: formData.serviceIds,
         });
         toast.success("Staff updated successfully");
       } else {
         await api.post("/staff", {
-          email: formData.email,
           name: formData.name,
           phone: formData.phone,
-          password: formData.password,
           specialization: formData.specialization,
           serviceIds: formData.serviceIds,
         });
@@ -164,26 +158,20 @@ const StaffManagement = () => {
           {staff.map((member) => (
             <div key={member._id} className="card">
               <div className="flex items-start gap-4 mb-4">
-                {member.userId?.profilePicture ? (
-                  <img
-                    src={member.userId.profilePicture}
-                    alt={member.userId.name}
-                    className="w-14 h-14 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-14 h-14 bg-primary-100 rounded-full flex items-center justify-center">
-                    <span className="text-xl font-bold text-primary-600">
-                      {member.userId?.name?.charAt(0)}
-                    </span>
-                  </div>
-                )}
+                <div className="w-14 h-14 bg-primary-100 rounded-full flex items-center justify-center">
+                  <span className="text-xl font-bold text-primary-600">
+                    {member.name?.charAt(0)}
+                  </span>
+                </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-semibold text-gray-900 truncate">
-                    {member.userId?.name}
+                    {member.name}
                   </h3>
-                  <p className="text-sm text-gray-600 truncate">
-                    {member.userId?.email}
-                  </p>
+                  {member.phone && (
+                    <p className="text-sm text-gray-600 truncate">
+                      {member.phone}
+                    </p>
+                  )}
                   {member.specialization && (
                     <p className="text-sm text-primary-600 mt-1">
                       {member.specialization}
@@ -262,70 +250,36 @@ const StaffManagement = () => {
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!editingStaff && (
-            <>
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Email Address *
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="email"
-                    className="input pl-10"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    placeholder="staff@example.com"
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Name *</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  required
-                />
-              </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Phone
-                  </label>
-                  <input
-                    type="tel"
-                    className="input"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                    placeholder="+1234567890"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    className="input"
-                    value={formData.password}
-                    onChange={(e) =>
-                      setFormData({ ...formData, password: e.target.value })
-                    }
-                    placeholder="Set initial password"
-                  />
-                </div>
-              </div>
-            </>
-          )}
+          <div>
+            <label className="block text-sm font-medium mb-1">Name *</label>
+            <input
+              type="text"
+              className="input"
+              value={formData.name}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
+              placeholder="Staff member name"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Phone</label>
+            <div className="flex">
+              <span className="inline-flex items-center px-3 bg-gray-100 border border-r-0 border-gray-300 rounded-l-lg text-gray-600 text-sm">
+                +91
+              </span>
+              <input
+                type="tel"
+                className="input rounded-l-none"
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+                placeholder="9876543210"
+              />
+            </div>
+          </div>
           <div>
             <label className="block text-sm font-medium mb-1">
               Specialization

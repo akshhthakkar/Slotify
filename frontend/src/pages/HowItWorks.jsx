@@ -17,7 +17,7 @@ const HowItWorks = () => {
   const { isAuthenticated, user } = useAuth();
 
   const getDashboardLink = () => {
-    if (user?.role === "admin") return "/admin/dashboard";
+    if (user?.role === "admin") return "/admin";
     return "/dashboard";
   };
 

@@ -1,27 +1,39 @@
-import { format, parseISO, isToday, isTomorrow, isPast, isFuture, addDays, startOfDay } from 'date-fns';
+import {
+  format,
+  parseISO,
+  isToday,
+  isTomorrow,
+  isPast,
+  isFuture,
+  addDays,
+  startOfDay,
+} from "date-fns";
 
 /**
  * Format date for display
  */
-export const formatDate = (date, formatString = 'MMM d, yyyy') => {
-  if (!date) return '';
-  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+export const formatDate = (date, formatString = "MMM d, yyyy") => {
+  if (!date) return "";
+  const dateObj = typeof date === "string" ? parseISO(date) : date;
   return format(dateObj, formatString);
 };
 
 /**
- * Format time for display
+ * Format time for display (12-hour format with AM/PM)
  */
 export const formatTime = (time) => {
-  if (!time) return '';
-  return time; // Already in HH:MM format
+  if (!time) return "";
+  const [hours, minutes] = time.split(":").map(Number);
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHours = hours % 12 || 12; // Convert 0 to 12, and 13+ to 1-11
+  return `${displayHours}:${minutes.toString().padStart(2, "0")} ${period}`;
 };
 
 /**
  * Format datetime for display
  */
 export const formatDateTime = (date, time) => {
-  const dateStr = formatDate(date, 'EEEE, MMMM d, yyyy');
+  const dateStr = formatDate(date, "EEEE, MMMM d, yyyy");
   return `${dateStr} at ${formatTime(time)}`;
 };
 
@@ -29,12 +41,12 @@ export const formatDateTime = (date, time) => {
  * Get relative date (Today, Tomorrow, or date)
  */
 export const getRelativeDate = (date) => {
-  if (!date) return '';
-  const dateObj = typeof date === 'string' ? parseISO(date) : date;
-  
-  if (isToday(dateObj)) return 'Today';
-  if (isTomorrow(dateObj)) return 'Tomorrow';
-  return formatDate(dateObj, 'MMM d');
+  if (!date) return "";
+  const dateObj = typeof date === "string" ? parseISO(date) : date;
+
+  if (isToday(dateObj)) return "Today";
+  if (isTomorrow(dateObj)) return "Tomorrow";
+  return formatDate(dateObj, "MMM d");
 };
 
 /**
@@ -42,7 +54,7 @@ export const getRelativeDate = (date) => {
  */
 export const isDatePast = (date) => {
   if (!date) return false;
-  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+  const dateObj = typeof date === "string" ? parseISO(date) : date;
   return isPast(startOfDay(dateObj));
 };
 
@@ -51,21 +63,21 @@ export const isDatePast = (date) => {
  */
 export const isDateFuture = (date) => {
   if (!date) return false;
-  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+  const dateObj = typeof date === "string" ? parseISO(date) : date;
   return isFuture(startOfDay(dateObj));
 };
 
 /**
  * Get date range (next N days)
  */
-export const getDateRange = (days = 30) => {
+export const getDateRange = (days = 30, startDate = new Date()) => {
   const dates = [];
-  const today = startOfDay(new Date());
-  
+  const start = startOfDay(startDate);
+
   for (let i = 0; i < days; i++) {
-    dates.push(addDays(today, i));
+    dates.push(addDays(start, i));
   }
-  
+
   return dates;
 };
 
@@ -73,9 +85,9 @@ export const getDateRange = (days = 30) => {
  * Convert date to ISO string for API
  */
 export const toISODate = (date) => {
-  if (!date) return '';
-  const dateObj = typeof date === 'string' ? parseISO(date) : date;
-  return dateObj.toISOString().split('T')[0];
+  if (!date) return "";
+  const dateObj = typeof date === "string" ? parseISO(date) : date;
+  return format(dateObj, "yyyy-MM-dd");
 };
 
 /**
@@ -83,7 +95,7 @@ export const toISODate = (date) => {
  */
 export const timeToMinutes = (time) => {
   if (!time) return 0;
-  const [hours, minutes] = time.split(':').map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
 };
 

@@ -1,6 +1,6 @@
-const Service = require('../models/Service');
-const Business = require('../models/Business');
-const Staff = require('../models/Staff');
+const Service = require("../models/Service");
+const Business = require("../models/Business");
+const Staff = require("../models/Staff");
 
 /**
  * @route   POST /api/services
@@ -16,14 +16,14 @@ const createService = async (req, res, next) => {
       duration,
       price,
       bufferTime,
-      staffIds
+      staffIds,
     } = req.body;
 
     // Validate required fields
     if (!name || !duration || price === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide name, duration, and price'
+        message: "Please provide name, duration, and price",
       });
     }
 
@@ -32,7 +32,7 @@ const createService = async (req, res, next) => {
     if (!business) {
       return res.status(404).json({
         success: false,
-        message: 'Business not found. Please create a business first.'
+        message: "Business not found. Please create a business first.",
       });
     }
 
@@ -45,13 +45,13 @@ const createService = async (req, res, next) => {
       duration,
       price,
       bufferTime: bufferTime || 0,
-      staffIds: staffIds || []
+      staffIds: staffIds || [],
     });
 
     res.status(201).json({
       success: true,
-      message: 'Service created successfully',
-      service
+      message: "Service created successfully",
+      service,
     });
   } catch (error) {
     next(error);
@@ -75,6 +75,12 @@ const getServices = async (req, res, next) => {
     } else if (req.user?.businessId) {
       // If authenticated user with business, show their services
       query.businessId = req.user.businessId;
+    } else if (req.user?.role === "admin") {
+      // For admin users, find their business by adminId
+      const adminBusiness = await Business.findOne({ adminId: req.user._id });
+      if (adminBusiness) {
+        query.businessId = adminBusiness._id;
+      }
     }
 
     if (category) {
@@ -82,17 +88,17 @@ const getServices = async (req, res, next) => {
     }
 
     if (isActive !== undefined) {
-      query.isActive = isActive === 'true';
+      query.isActive = isActive === "true";
     } else {
       // By default, only show active services for public queries
-      if (!req.user || req.user.role === 'customer') {
+      if (!req.user || req.user.role === "customer") {
         query.isActive = true;
       }
     }
 
     const services = await Service.find(query)
-      .populate('staffIds', 'name email profilePicture')
-      .populate('businessId', 'name slug')
+      .populate("staffIds", "name email profilePicture")
+      .populate("businessId", "name slug")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -104,7 +110,7 @@ const getServices = async (req, res, next) => {
       services,
       totalPages: Math.ceil(count / limit),
       currentPage: parseInt(page),
-      total: count
+      total: count,
     });
   } catch (error) {
     next(error);
@@ -119,19 +125,19 @@ const getServices = async (req, res, next) => {
 const getServiceById = async (req, res, next) => {
   try {
     const service = await Service.findById(req.params.id)
-      .populate('staffIds', 'name email profilePicture')
-      .populate('businessId', 'name slug logo');
+      .populate("staffIds", "name email profilePicture")
+      .populate("businessId", "name slug logo");
 
     if (!service) {
       return res.status(404).json({
         success: false,
-        message: 'Service not found'
+        message: "Service not found",
       });
     }
 
     res.json({
       success: true,
-      service
+      service,
     });
   } catch (error) {
     next(error);
@@ -152,7 +158,7 @@ const updateService = async (req, res, next) => {
       duration,
       price,
       bufferTime,
-      staffIds
+      staffIds,
     } = req.body;
 
     const service = await Service.findById(req.params.id);
@@ -160,7 +166,7 @@ const updateService = async (req, res, next) => {
     if (!service) {
       return res.status(404).json({
         success: false,
-        message: 'Service not found'
+        message: "Service not found",
       });
     }
 
@@ -168,7 +174,7 @@ const updateService = async (req, res, next) => {
     if (service.businessId.toString() !== req.user.businessId?.toString()) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied. You can only update your own services.'
+        message: "Access denied. You can only update your own services.",
       });
     }
 
@@ -183,13 +189,15 @@ const updateService = async (req, res, next) => {
 
     await service.save();
 
-    const updatedService = await Service.findById(service._id)
-      .populate('staffIds', 'name email profilePicture');
+    const updatedService = await Service.findById(service._id).populate(
+      "staffIds",
+      "name email profilePicture"
+    );
 
     res.json({
       success: true,
-      message: 'Service updated successfully',
-      service: updatedService
+      message: "Service updated successfully",
+      service: updatedService,
     });
   } catch (error) {
     next(error);
@@ -208,7 +216,7 @@ const toggleServiceStatus = async (req, res, next) => {
     if (!service) {
       return res.status(404).json({
         success: false,
-        message: 'Service not found'
+        message: "Service not found",
       });
     }
 
@@ -216,7 +224,7 @@ const toggleServiceStatus = async (req, res, next) => {
     if (service.businessId.toString() !== req.user.businessId?.toString()) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied. You can only update your own services.'
+        message: "Access denied. You can only update your own services.",
       });
     }
 
@@ -225,8 +233,10 @@ const toggleServiceStatus = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: `Service ${service.isActive ? 'activated' : 'deactivated'} successfully`,
-      service
+      message: `Service ${
+        service.isActive ? "activated" : "deactivated"
+      } successfully`,
+      service,
     });
   } catch (error) {
     next(error);
@@ -245,7 +255,7 @@ const deleteService = async (req, res, next) => {
     if (!service) {
       return res.status(404).json({
         success: false,
-        message: 'Service not found'
+        message: "Service not found",
       });
     }
 
@@ -253,7 +263,7 @@ const deleteService = async (req, res, next) => {
     if (service.businessId.toString() !== req.user.businessId?.toString()) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied. You can only delete your own services.'
+        message: "Access denied. You can only delete your own services.",
       });
     }
 
@@ -266,7 +276,7 @@ const deleteService = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: 'Service deleted successfully'
+      message: "Service deleted successfully",
     });
   } catch (error) {
     next(error);
@@ -279,5 +289,5 @@ module.exports = {
   getServiceById,
   updateService,
   toggleServiceStatus,
-  deleteService
+  deleteService,
 };

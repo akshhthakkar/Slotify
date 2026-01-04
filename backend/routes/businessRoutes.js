@@ -11,6 +11,7 @@ const {
   updateBookingSettings,
   updateOnboardingStep,
   getBusinessesByCategory,
+  getPublicBusinessById,
 } = require("../controllers/businessController");
 const {
   authenticate,
@@ -22,6 +23,7 @@ const router = express.Router();
 
 // Public routes
 router.get("/", getAllBusinesses);
+router.get("/public/:id", getPublicBusinessById);
 router.get("/slug/:slug", getBusinessBySlug);
 router.get("/category/:category", getBusinessesByCategory);
 

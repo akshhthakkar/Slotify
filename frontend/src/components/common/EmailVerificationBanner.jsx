@@ -1,6 +1,7 @@
 import { useAuth } from "../../context/AuthContext";
 import { Mail, X, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 
 const EmailVerificationBanner = () => {
   const { user, isAuthenticated, isEmailVerified, resendVerificationEmail } =
@@ -29,8 +30,27 @@ const EmailVerificationBanner = () => {
     }
   }, [cooldown]);
 
-  // Don't show if not authenticated, already verified, or temporarily dismissed
-  if (!isAuthenticated || isEmailVerified || dismissed) {
+  const { pathname } = useLocation();
+
+  // Public/marketing pages where banner shouldn't appear
+  const isPublicPage = [
+    "/",
+    "/about",
+    "/contact",
+    "/features",
+    "/how-it-works",
+    "/privacy",
+    "/terms",
+    "/cookies",
+    "/support",
+  ].includes(pathname);
+
+  // Don't show if:
+  // 1. Not authenticated
+  // 2. Already verified
+  // 3. Temporarily dismissed
+  // 4. On a public marketing page
+  if (!isAuthenticated || isEmailVerified || dismissed || isPublicPage) {
     return null;
   }
 

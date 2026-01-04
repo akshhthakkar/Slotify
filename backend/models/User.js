@@ -66,6 +66,31 @@ const userSchema = new mongoose.Schema(
     },
     lastLogin: Date,
     notificationPreferences: {
+      emailBookingConfirmation: {
+        type: Boolean,
+        default: true,
+      },
+      email24hReminder: {
+        type: Boolean,
+        default: true,
+      },
+      email2hReminder: {
+        type: Boolean,
+        default: true,
+      },
+      emailCancellation: {
+        type: Boolean,
+        default: true,
+      },
+      inAppRealtime: {
+        type: Boolean,
+        default: true,
+      },
+      inAppReminders: {
+        type: Boolean,
+        default: true,
+      },
+      // Legacy fields for backward compatibility
       email: {
         type: Boolean,
         default: true,
@@ -75,6 +100,12 @@ const userSchema = new mongoose.Schema(
         default: true,
       },
     },
+    // Customer booking preferences
+    defaultBookingNotes: {
+      type: String,
+      default: "",
+      maxlength: 500,
+    },
   },
   {
     timestamps: true,
@@ -82,8 +113,6 @@ const userSchema = new mongoose.Schema(
 );
 
 // Indexes for performance
-userSchema.index({ email: 1 });
-userSchema.index({ googleId: 1 });
 userSchema.index({ businessId: 1, role: 1 });
 
 // Hash password before saving

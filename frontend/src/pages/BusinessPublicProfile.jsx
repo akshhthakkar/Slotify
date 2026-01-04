@@ -11,6 +11,7 @@ import {
   Lock,
   User,
   LogIn,
+  Settings,
 } from "lucide-react";
 import api from "../utils/api";
 import Loading from "../components/common/Loading";
@@ -46,11 +47,11 @@ const BusinessPublicProfile = () => {
       );
       setServices(servicesRes.data.services || []);
 
-      // Fetch staff only if user is authenticated
+      // Fetch staff for authenticated users using public endpoint
       if (isAuthenticated) {
         try {
           const staffRes = await api.get(
-            `/staff?businessId=${businessRes.data.business._id}`
+            `/staff/public/${businessRes.data.business._id}`
           );
           setStaff(staffRes.data.staff || []);
         } catch (error) {
@@ -75,6 +76,14 @@ const BusinessPublicProfile = () => {
         `/login?redirect=/book/${business._id}${
           serviceId ? `?serviceId=${serviceId}` : ""
         }`
+      );
+      return;
+    }
+
+    // Block business accounts
+    if (user?.role === "admin") {
+      toast.error(
+        "Business accounts cannot book appointments. Please use a personal account."
       );
       return;
     }
@@ -182,32 +191,67 @@ const BusinessPublicProfile = () => {
                         {business.subcategory}
                       </span>
                     )}
+                    {business.bookingSettings?.allowWalkIns ? (
+                      <span className="badge bg-green-100 text-green-800 border-green-200">
+                        Walk-ins Welcome
+                      </span>
+                    ) : (
+                      <span className="badge bg-orange-100 text-orange-800 border-orange-200">
+                        Appointment Only
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <Button
-                  variant="primary"
-                  size="large"
-                  onClick={() => handleBookNow()}
-                  className="hidden md:flex"
-                >
-                  <Calendar className="w-5 h-5 mr-2" />
-                  Book Now
-                </Button>
+                {user?.role === "admin" && user?.businessId === business._id ? (
+                  <Link to="/admin">
+                    <Button
+                      variant="primary"
+                      size="large"
+                      className="hidden md:flex"
+                    >
+                      <Settings className="w-5 h-5 mr-2" />
+                      Manage Business
+                    </Button>
+                  </Link>
+                ) : user?.role !== "admin" ? (
+                  <Button
+                    variant="primary"
+                    size="large"
+                    onClick={() => handleBookNow()}
+                    className="hidden md:flex"
+                  >
+                    <Calendar className="w-5 h-5 mr-2" />
+                    Book Now
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>
 
           {/* Mobile Book Button */}
-          <Button
-            variant="primary"
-            size="large"
-            onClick={() => handleBookNow()}
-            className="w-full md:hidden mt-4"
-          >
-            <Calendar className="w-5 h-5 mr-2" />
-            Book Now
-          </Button>
+          {user?.role === "admin" && user?.businessId === business._id ? (
+            <Link to="/admin">
+              <Button
+                variant="primary"
+                size="large"
+                className="w-full md:hidden mt-4"
+              >
+                <Settings className="w-5 h-5 mr-2" />
+                Manage Business
+              </Button>
+            </Link>
+          ) : user?.role !== "admin" ? (
+            <Button
+              variant="primary"
+              size="large"
+              onClick={() => handleBookNow()}
+              className="w-full md:hidden mt-4"
+            >
+              <Calendar className="w-5 h-5 mr-2" />
+              Book Now
+            </Button>
+          ) : null}
         </div>
 
         <div className="grid md:grid-cols-3 gap-6">
@@ -238,7 +282,7 @@ const BusinessPublicProfile = () => {
                           )}
                         </div>
                         <span className="text-lg font-bold text-primary-600">
-                          ${service.price}
+                          ₹{service.price}
                         </span>
                       </div>
 
@@ -255,13 +299,15 @@ const BusinessPublicProfile = () => {
                           )}
                         </div>
 
-                        <Button
-                          variant="outline"
-                          size="small"
-                          onClick={() => handleBookNow(service._id)}
-                        >
-                          Book
-                        </Button>
+                        {user?.role !== "admin" && (
+                          <Button
+                            variant="outline"
+                            size="small"
+                            onClick={() => handleBookNow(service._id)}
+                          >
+                            Book
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}

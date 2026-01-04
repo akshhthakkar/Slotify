@@ -94,20 +94,53 @@ const uploadProfilePicture = async (req, res, next) => {
 
 /**
  * @route   PUT /api/users/settings
- * @desc    Update notification preferences
+ * @desc    Update notification preferences and booking settings
  * @access  Private
  */
 const updateSettings = async (req, res, next) => {
   try {
-    const { email, inApp } = req.body.notificationPreferences || {};
+    const { notificationPreferences, defaultBookingNotes } = req.body;
 
     const user = await User.findById(req.user._id);
 
-    if (email !== undefined) {
-      user.notificationPreferences.email = email;
+    // Update notification preferences
+    if (notificationPreferences) {
+      const prefs = notificationPreferences;
+
+      // Handle all notification toggles
+      if (prefs.emailBookingConfirmation !== undefined) {
+        user.notificationPreferences.emailBookingConfirmation =
+          prefs.emailBookingConfirmation;
+      }
+      if (prefs.email24hReminder !== undefined) {
+        user.notificationPreferences.email24hReminder = prefs.email24hReminder;
+      }
+      if (prefs.email2hReminder !== undefined) {
+        user.notificationPreferences.email2hReminder = prefs.email2hReminder;
+      }
+      if (prefs.emailCancellation !== undefined) {
+        user.notificationPreferences.emailCancellation =
+          prefs.emailCancellation;
+      }
+      if (prefs.inAppRealtime !== undefined) {
+        user.notificationPreferences.inAppRealtime = prefs.inAppRealtime;
+      }
+      if (prefs.inAppReminders !== undefined) {
+        user.notificationPreferences.inAppReminders = prefs.inAppReminders;
+      }
+
+      // Legacy fields for backward compatibility
+      if (prefs.email !== undefined) {
+        user.notificationPreferences.email = prefs.email;
+      }
+      if (prefs.inApp !== undefined) {
+        user.notificationPreferences.inApp = prefs.inApp;
+      }
     }
-    if (inApp !== undefined) {
-      user.notificationPreferences.inApp = inApp;
+
+    // Update default booking notes (only for customers)
+    if (defaultBookingNotes !== undefined && user.role === "customer") {
+      user.defaultBookingNotes = defaultBookingNotes.substring(0, 500);
     }
 
     await user.save();
@@ -116,6 +149,7 @@ const updateSettings = async (req, res, next) => {
       success: true,
       message: "Settings updated successfully",
       notificationPreferences: user.notificationPreferences,
+      defaultBookingNotes: user.defaultBookingNotes,
     });
   } catch (error) {
     next(error);

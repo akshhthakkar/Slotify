@@ -45,28 +45,47 @@ const MyAppointments = () => {
   const fetchAppointments = async () => {
     try {
       setLoading(true);
-      const statusFilter = {
-        upcoming: "scheduled",
-        past: "completed",
-        cancelled: "cancelled",
-      }[activeTab];
 
-      const response = await api.get(`/appointments?status=${statusFilter}`);
-      const fetchedAppointments = response.data.appointments || [];
+      // Fetch all appointments for the user
+      const response = await api.get("/appointments");
+      const allAppointments = response.data.appointments || [];
 
-      // Filter by date for upcoming/past
-      const filtered = fetchedAppointments.filter((apt) => {
-        const isPast = isDatePast(apt.appointmentDate);
-        if (activeTab === "upcoming") return !isPast;
-        if (activeTab === "past") return isPast;
-        return true;
-      });
+      const now = new Date();
 
-      // Sort: upcoming (earliest first), past (latest first)
+      // Helper to check if appointment datetime has passed
+      const isAppointmentPast = (apt) => {
+        const aptDate = new Date(apt.appointmentDate);
+        const [hours, minutes] = (apt.startTime || "00:00")
+          .split(":")
+          .map(Number);
+        aptDate.setHours(hours, minutes, 0, 0);
+        return aptDate < now;
+      };
+
+      let filtered = [];
+
+      if (activeTab === "upcoming") {
+        // Upcoming: scheduled appointments that haven't happened yet
+        filtered = allAppointments.filter(
+          (apt) => apt.status === "scheduled" && !isAppointmentPast(apt)
+        );
+      } else if (activeTab === "past") {
+        // Past: completed appointments OR scheduled appointments that have passed
+        filtered = allAppointments.filter(
+          (apt) =>
+            apt.status === "completed" ||
+            (apt.status === "scheduled" && isAppointmentPast(apt))
+        );
+      } else if (activeTab === "cancelled") {
+        // Cancelled: cancelled appointments
+        filtered = allAppointments.filter((apt) => apt.status === "cancelled");
+      }
+
+      // Sort: upcoming (earliest first), past/cancelled (latest first)
       filtered.sort((a, b) => {
         const dateA = new Date(a.appointmentDate);
         const dateB = new Date(b.appointmentDate);
-        return activeTab === "past" ? dateB - dateA : dateA - dateB;
+        return activeTab === "upcoming" ? dateA - dateB : dateB - dateA;
       });
 
       setAppointments(filtered);
@@ -104,15 +123,29 @@ const MyAppointments = () => {
     navigate(`/appointments/${appointment._id}/reschedule`);
   };
 
-  const getStatusBadge = (status) => {
+  // Get appropriate status badge based on tab context
+  const getStatusBadge = (appointment) => {
+    // For past tab, show "Completed" for passed appointments regardless of backend status
+    if (activeTab === "past") {
+      return <span className="badge badge-success">Completed</span>;
+    }
+
+    // For upcoming tab, show "Scheduled"
+    if (activeTab === "upcoming") {
+      return <span className="badge badge-info">Scheduled</span>;
+    }
+
+    // For cancelled tab, show based on actual status
     const badges = {
-      scheduled: <span className="badge badge-info">Scheduled</span>,
-      completed: <span className="badge badge-success">Completed</span>,
       cancelled: <span className="badge badge-danger">Cancelled</span>,
       "no-show": <span className="badge bg-gray-500 text-white">No Show</span>,
       rescheduled: <span className="badge badge-warning">Rescheduled</span>,
     };
-    return badges[status] || <span className="badge">{status}</span>;
+    return (
+      badges[appointment.status] || (
+        <span className="badge badge-danger">Cancelled</span>
+      )
+    );
   };
 
   const canCancelOrReschedule = (appointment) => {
@@ -199,7 +232,7 @@ const MyAppointments = () => {
                           {appointment.businessId.name}
                         </p>
                       </div>
-                      {getStatusBadge(appointment.status)}
+                      {getStatusBadge(appointment)}
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-3 text-sm text-gray-600">

@@ -38,10 +38,9 @@ const Settings = () => {
     inAppRealtime: true,
     inAppReminders: true,
   });
-  const [bookingPreferences, setBookingPreferences] = useState({
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    defaultNotes: "",
-  });
+  const [defaultBookingNotes, setDefaultBookingNotes] = useState(
+    user?.defaultBookingNotes || ""
+  );
 
   // Check localStorage for cooldown on mount
   useEffect(() => {
@@ -87,7 +86,7 @@ const Settings = () => {
 
     // Save to backend
     try {
-      await api.put("/users/preferences", {
+      await api.put("/users/settings", {
         notificationPreferences: {
           ...notifications,
           [key]: newValue,
@@ -101,17 +100,13 @@ const Settings = () => {
     }
   };
 
-  const handleBookingPreferencesChange = (key, value) => {
-    setBookingPreferences((prev) => ({ ...prev, [key]: value }));
-  };
-
   const saveBookingPreferences = async () => {
     try {
       setLoading(true);
-      await api.put("/users/preferences", {
-        bookingPreferences,
+      await api.put("/users/settings", {
+        defaultBookingNotes,
       });
-      toast.success("Booking preferences saved");
+      toast.success("Preferences saved");
     } catch (error) {
       toast.error("Failed to save preferences");
     } finally {
@@ -321,80 +316,49 @@ const Settings = () => {
             </div>
           </div>
 
-          {/* Booking Preferences */}
-          <div className="card">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <Calendar className="w-5 h-5 text-green-600" />
+          {/* Booking Preferences - Only for Customers */}
+          {user?.role === "customer" && (
+            <div className="card">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <Calendar className="w-5 h-5 text-green-600" />
+                </div>
+                <h2 className="text-xl font-semibold">Booking Preferences</h2>
               </div>
-              <h2 className="text-xl font-semibold">Booking Preferences</h2>
-            </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Preferred Timezone
-                </label>
-                <select
-                  value={bookingPreferences.timezone}
-                  onChange={(e) =>
-                    handleBookingPreferencesChange("timezone", e.target.value)
-                  }
-                  className="input max-w-md"
-                >
-                  <option
-                    value={Intl.DateTimeFormat().resolvedOptions().timeZone}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Default Booking Notes
+                  </label>
+                  <p className="text-sm text-gray-500 mb-2">
+                    These notes will be pre-filled when you book appointments.
+                  </p>
+                  <textarea
+                    value={defaultBookingNotes}
+                    onChange={(e) => setDefaultBookingNotes(e.target.value)}
+                    placeholder="E.g., I prefer a quiet environment, I have allergies to..."
+                    rows="3"
+                    maxLength={500}
+                    className="input w-full"
+                  />
+                  <p className="text-xs text-gray-400 mt-1 text-right">
+                    {defaultBookingNotes.length}/500 characters
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <Button
+                    variant="primary"
+                    onClick={saveBookingPreferences}
+                    loading={loading}
                   >
-                    Auto-detect (
-                    {Intl.DateTimeFormat().resolvedOptions().timeZone})
-                  </option>
-                  <option value="America/New_York">Eastern Time (ET)</option>
-                  <option value="America/Chicago">Central Time (CT)</option>
-                  <option value="America/Denver">Mountain Time (MT)</option>
-                  <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                  <option value="Europe/London">London (GMT)</option>
-                  <option value="Europe/Paris">Paris (CET)</option>
-                  <option value="Asia/Tokyo">Tokyo (JST)</option>
-                  <option value="Asia/Kolkata">India (IST)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Default Booking Notes
-                </label>
-                <textarea
-                  value={bookingPreferences.defaultNotes}
-                  onChange={(e) =>
-                    handleBookingPreferencesChange(
-                      "defaultNotes",
-                      e.target.value
-                    )
-                  }
-                  placeholder="Add any default notes to include with your bookings..."
-                  rows="3"
-                  className="input max-w-md"
-                />
-              </div>
-
-              <div className="pt-2">
-                <Button
-                  variant="primary"
-                  onClick={saveBookingPreferences}
-                  loading={loading}
-                >
-                  Save Preferences
-                </Button>
-              </div>
-
-              <div className="p-3 bg-gray-50 rounded-lg mt-4">
-                <p className="text-sm text-gray-600 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Calendar integration coming soon
-                </p>
+                    Save Preferences
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Privacy & Data */}
           <div className="card">

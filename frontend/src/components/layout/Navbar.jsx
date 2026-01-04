@@ -49,7 +49,10 @@ const Navbar = () => {
         <div className="flex justify-between h-16">
           {/* Logo */}
           <div className="flex items-center">
-            <Link to="/" className="flex items-center group">
+            <Link
+              to={user?.role === "admin" ? "/admin" : "/"}
+              className="flex items-center group"
+            >
               <img
                 src="/logo_html.png"
                 alt="Logo"

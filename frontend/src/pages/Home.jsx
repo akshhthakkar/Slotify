@@ -21,7 +21,7 @@ const Home = () => {
   const navigate = useNavigate();
 
   const getDashboardLink = () => {
-    if (user?.role === "admin") return "/admin/dashboard";
+    if (user?.role === "admin") return "/admin";
     return "/dashboard";
   };
   const [businesses, setBusinesses] = useState([]);
@@ -65,8 +65,12 @@ const Home = () => {
   ];
 
   useEffect(() => {
+    if (isAuthenticated && user?.role === "admin") {
+      navigate("/admin");
+      return;
+    }
     fetchFeaturedBusinesses();
-  }, []);
+  }, [isAuthenticated, user, navigate]);
 
   const fetchFeaturedBusinesses = async () => {
     try {
@@ -245,7 +249,7 @@ const Home = () => {
                   className="bg-white rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-300 group"
                 >
                   {/* Cover Image */}
-                  <div className="h-44 bg-gradient-to-br from-primary-400 to-primary-600 overflow-hidden">
+                  <div className="h-44 bg-gradient-to-br from-primary-400 to-primary-600 overflow-hidden relative">
                     {business.coverPhoto ? (
                       <img
                         src={business.coverPhoto}
@@ -259,6 +263,18 @@ const Home = () => {
                         </span>
                       </div>
                     )}
+                    {/* Walk-in Badge */}
+                    <div className="absolute top-3 right-3">
+                      {business.bookingSettings?.allowWalkIns ? (
+                        <span className="bg-green-100/90 backdrop-blur-sm text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-green-200">
+                          Walk-ins Welcome
+                        </span>
+                      ) : (
+                        <span className="bg-orange-100/90 backdrop-blur-sm text-orange-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-orange-200">
+                          Appointment Only
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="p-5">

@@ -8,6 +8,7 @@ const {
   getAvailableSlots,
   completeAppointment,
   markNoShow,
+  createWalkInAppointment,
 } = require("../controllers/appointmentController");
 const {
   authenticate,
@@ -17,8 +18,16 @@ const {
 
 const router = express.Router();
 
-// Public routes
-router.get("/available-slots", getAvailableSlots);
+// Slot viewing requires authentication (logged in users only)
+router.get("/available-slots", authenticate, getAvailableSlots);
+
+// Walk-in route (Admin only)
+router.post(
+  "/walk-in",
+  authenticate,
+  requireRole("admin"),
+  createWalkInAppointment
+);
 
 // Protected routes - require authentication AND email verification for booking actions
 router.post("/", authenticate, requireEmailVerified, createAppointment);

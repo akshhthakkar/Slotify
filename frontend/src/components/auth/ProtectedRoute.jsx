@@ -1,8 +1,8 @@
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 export const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -15,6 +15,14 @@ export const ProtectedRoute = ({ children }) => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Redirect admins and staff to their dashboards if on customer routes
+  if (user?.role === "admin" && location.pathname === "/dashboard") {
+    return <Navigate to="/admin" replace />;
+  }
+  if (user?.role === "staff" && location.pathname === "/dashboard") {
+    return <Navigate to="/staff" replace />;
   }
 
   return children;
@@ -56,8 +64,9 @@ export const PublicRoute = ({ children }) => {
 
   if (isAuthenticated && user) {
     // Redirect to appropriate dashboard based on role
-    if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
-    if (user.role === 'staff') return <Navigate to="/staff/dashboard" replace />;
+    if (user.role === "admin") return <Navigate to="/admin" replace />;
+    if (user.role === "staff")
+      return <Navigate to="/staff/dashboard" replace />;
     return <Navigate to="/dashboard" replace />;
   }
 
