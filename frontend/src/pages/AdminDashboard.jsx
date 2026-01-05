@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import VerificationReminder from "../components/merchant/VerificationReminder";
 import CancelAppointmentModal from "../components/admin/CancelAppointmentModal";
 import WalkInModal from "../components/admin/WalkInModal";
@@ -27,9 +27,11 @@ import {
   AlertCircle,
   Zap,
   Info,
+  Edit2,
 } from "lucide-react";
 
 const AdminDashboard = () => {
+  const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(false);
@@ -224,6 +226,17 @@ const AdminDashboard = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to mark no-show");
     }
+  };
+
+  const handleReschedule = (appointment) => {
+    navigate(`/appointments/${appointment._id}/reschedule`);
+  };
+
+  // Check if appointment can be rescheduled
+  const canReschedule = (apt) => {
+    if (apt.status !== "scheduled") return false;
+    if (apt.isWalkIn) return false;
+    return true;
   };
 
   if (authLoading || loading)
@@ -515,6 +528,16 @@ const AdminDashboard = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       {getStatusBadge(apt.status)}
+                      {canReschedule(apt) && (
+                        <Button
+                          variant="outline"
+                          size="small"
+                          onClick={() => handleReschedule(apt)}
+                        >
+                          <Edit2 className="w-4 h-4 mr-1" />
+                          Reschedule
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="small"

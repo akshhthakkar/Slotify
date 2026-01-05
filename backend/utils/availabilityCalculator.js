@@ -2,6 +2,10 @@ const Business = require("../models/Business");
 const Service = require("../models/Service");
 const Staff = require("../models/Staff");
 const Appointment = require("../models/Appointment");
+const { createSlotError, getErrorCodeFromStatus } = require("./slotErrors");
+
+// Maximum staff to consider for "Any Available" to prevent performance issues
+const MAX_STAFF_FOR_ANY_AVAILABLE = 10;
 
 /**
  * Calculate ALL time slots for a service with status (available, booked, past, unavailable)
@@ -91,6 +95,15 @@ const calculateAvailableSlots = async (
     const minAdvanceMinutes =
       (business.bookingSettings?.minAdvanceTime || 1) * 60;
 
+    // Calculate max advance booking window in days
+    const maxAdvanceDays = business.bookingSettings?.maxAdvanceTime || 90;
+
+    // Check if date is too far in the future
+    const todayStart = new Date(nowInBusinessTz);
+    todayStart.setHours(0, 0, 0, 0);
+    const daysDiff = Math.floor((dateObj - todayStart) / (1000 * 60 * 60 * 24));
+    const isTooFar = daysDiff > maxAdvanceDays;
+
     // Generate all possible slots with status
     const allSlots = [];
     const serviceDuration = service.duration;
@@ -110,11 +123,12 @@ const calculateAvailableSlots = async (
       }
     } else {
       // Get all active staff that can provide this service
+      // Limit to MAX_STAFF_FOR_ANY_AVAILABLE to prevent N×slot explosion
       staffMembers = await Staff.find({
         businessId,
         isActive: true,
         serviceIds: serviceId, // Only staff assigned to this service
-      });
+      }).limit(MAX_STAFF_FOR_ANY_AVAILABLE);
     }
 
     // If we have Staff records, use staff-specific scheduling
@@ -165,6 +179,7 @@ const calculateAvailableSlots = async (
           isToday,
           currentMinutes,
           minAdvanceMinutes,
+          isTooFar,
           allSlots
         );
       }
@@ -202,16 +217,23 @@ const calculateAvailableSlots = async (
           isToday,
           currentMinutes,
           minAdvanceMinutes,
+          isTooFar,
           allSlots
         );
       }
     }
 
     // Remove duplicates (keep first occurrence) and sort
-    // When deduplicating, prefer "available" > "unavailable" > "booked" > "past"
+    // When deduplicating, prefer "available" > "too-soon" > "too-far" > "booked" > "past"
     const uniqueSlots = [];
     const seenTimes = new Set();
-    const statusPriority = { available: 4, unavailable: 3, booked: 2, past: 1 };
+    const statusPriority = {
+      available: 5,
+      "too-soon": 4,
+      "too-far": 3,
+      booked: 2,
+      past: 1,
+    };
 
     for (const slot of allSlots) {
       const key = slot.startTime;
@@ -256,6 +278,7 @@ const calculateAvailableSlots = async (
  * @param {Boolean} isToday - Whether this is today's date
  * @param {Number} currentMinutes - Current time in minutes since midnight
  * @param {Number} minAdvanceMinutes - Minimum advance booking time in minutes
+ * @param {Boolean} isTooFar - Whether date is beyond max advance booking window
  * @param {Array} allSlots - Output array to push slots into
  */
 const generateSlotsFromHours = (
@@ -267,6 +290,7 @@ const generateSlotsFromHours = (
   isToday,
   currentMinutes,
   minAdvanceMinutes,
+  isTooFar,
   allSlots
 ) => {
   if (!hours.slots || hours.slots.length === 0) return;
@@ -303,34 +327,19 @@ const generateSlotsFromHours = (
         continue;
       }
 
-      // Determine slot status
-      let status = "available";
-
-      // Check if slot is in the past
-      if (isToday && currentTime < currentMinutes) {
-        status = "past";
-      }
-      // Check if slot is within advance booking window (visible but not bookable)
-      else if (isToday && currentTime < currentMinutes + minAdvanceMinutes) {
-        status = "unavailable";
-      }
-
-      // Check if slot conflicts with existing appointments (only if not already past/unavailable)
-      if (status === "available") {
-        const hasConflict = existingAppointments.some((apt) => {
-          const aptStart = timeToMinutes(apt.startTime);
-          const aptEnd = timeToMinutes(apt.endTime);
-          const aptEndWithBuffer = aptEnd + bufferTime;
-          return (
-            currentTime < aptEndWithBuffer &&
-            currentTime + serviceDuration > aptStart
-          );
-        });
-
-        if (hasConflict) {
-          status = "booked";
-        }
-      }
+      // Determine slot status using priority order:
+      // too-soon > past > too-far > booked > available
+      // This ensures time-based states override booking state
+      const status = determineSlotStatus({
+        slotTime: currentTime,
+        isToday,
+        currentMinutes,
+        minAdvanceMinutes,
+        isTooFar,
+        existingAppointments,
+        serviceDuration,
+        bufferTime,
+      });
 
       allSlots.push({
         startTime: slotStartTime,
@@ -352,6 +361,71 @@ const generateSlotsFromHours = (
 const timeToMinutes = (time) => {
   const [hours, minutes] = time.split(":").map(Number);
   return hours * 60 + minutes;
+};
+
+/**
+ * Determine slot status with correct priority order.
+ * Priority: too-soon > past > too-far > booked > available
+ * Time-based states override booking state.
+ *
+ * @param {Object} config - Configuration object
+ * @param {Number} config.slotTime - Slot start time in minutes
+ * @param {Boolean} config.isToday - Whether date is today
+ * @param {Number} config.currentMinutes - Current time in minutes
+ * @param {Number} config.minAdvanceMinutes - Minimum advance booking time in minutes
+ * @param {Boolean} config.isTooFar - Whether date exceeds max advance days
+ * @param {Array} config.existingAppointments - Existing appointments for conflict check
+ * @param {Number} config.serviceDuration - Service duration in minutes
+ * @param {Number} config.bufferTime - Buffer time after appointments
+ * @returns {String} Slot status: available|booked|past|too-soon|too-far
+ */
+const determineSlotStatus = (config) => {
+  const {
+    slotTime,
+    isToday,
+    currentMinutes,
+    minAdvanceMinutes,
+    isTooFar,
+    existingAppointments,
+    serviceDuration,
+    bufferTime,
+  } = config;
+
+  // Priority 1: TOO-SOON (within minimum advance window)
+  // Must be checked first - even if slot isn't "past" yet, it might be too soon
+  if (isToday && slotTime < currentMinutes + minAdvanceMinutes) {
+    // But if it's also past, return past instead
+    if (slotTime < currentMinutes) {
+      return "past";
+    }
+    return "too-soon";
+  }
+
+  // Priority 2: PAST (time has passed)
+  if (isToday && slotTime < currentMinutes) {
+    return "past";
+  }
+
+  // Priority 3: TOO-FAR (beyond max advance days)
+  if (isTooFar) {
+    return "too-far";
+  }
+
+  // Priority 4: BOOKED (conflicts with existing appointment)
+  const hasConflict = existingAppointments.some((apt) => {
+    const aptStart = timeToMinutes(apt.startTime);
+    const aptEnd = timeToMinutes(apt.endTime);
+    // Buffer-aware conflict detection
+    const aptEndWithBuffer = aptEnd + bufferTime;
+    return slotTime < aptEndWithBuffer && slotTime + serviceDuration > aptStart;
+  });
+
+  if (hasConflict) {
+    return "booked";
+  }
+
+  // Priority 5: AVAILABLE (default)
+  return "available";
 };
 
 /**
@@ -443,18 +517,15 @@ const validateSlotExists = async (businessId, serviceId, date, startTime) => {
     const result = await calculateAvailableSlots(businessId, serviceId, date);
 
     if (result.isHoliday) {
-      return {
-        valid: false,
-        error: "Business is closed on this date (holiday)",
-      };
+      return createSlotError("SLOT_HOLIDAY");
     }
 
     if (result.isClosed) {
-      return { valid: false, error: "Business is closed on this day" };
+      return createSlotError("SLOT_CLOSED");
     }
 
     if (result.noStaff) {
-      return { valid: false, error: "No staff available for this service" };
+      return createSlotError("SLOT_NO_STAFF");
     }
 
     // Find the requested slot in generated slots
@@ -463,26 +534,13 @@ const validateSlotExists = async (businessId, serviceId, date, startTime) => {
     );
 
     if (!requestedSlot) {
-      return {
-        valid: false,
-        error: "Invalid time slot. Please select from available time slots.",
-      };
+      return createSlotError("SLOT_NOT_FOUND");
     }
 
-    // Check slot status
-    if (requestedSlot.status === "past") {
-      return { valid: false, error: "This time slot is in the past" };
-    }
-
-    if (requestedSlot.status === "booked") {
-      return { valid: false, error: "This time slot is already booked" };
-    }
-
-    if (requestedSlot.status === "unavailable") {
-      return {
-        valid: false,
-        error: "This slot is too soon. Please book at least 1 hour in advance.",
-      };
+    // Check slot status - only "available" can be booked
+    if (requestedSlot.status !== "available") {
+      const errorKey = getErrorCodeFromStatus(requestedSlot.status);
+      return createSlotError(errorKey);
     }
 
     return {
@@ -492,7 +550,11 @@ const validateSlotExists = async (businessId, serviceId, date, startTime) => {
     };
   } catch (error) {
     console.error("Error validating slot:", error);
-    return { valid: false, error: "Unable to validate time slot" };
+    return {
+      valid: false,
+      errorCode: "VALIDATION_ERROR",
+      error: "Unable to validate time slot",
+    };
   }
 };
 

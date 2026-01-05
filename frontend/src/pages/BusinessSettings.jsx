@@ -39,7 +39,7 @@ const BusinessSettings = () => {
     minAdvanceTime: 1,
     maxAdvanceTime: 90,
     cancellationWindow: 24,
-    rescheduleWindow: 24,
+    rescheduleWindow: 1,
     maxReschedulesPerAppointment: 2,
     allowWalkIns: true,
   });

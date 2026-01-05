@@ -219,9 +219,28 @@ const BookAppointment = () => {
       toast.success("Appointment booked successfully!");
       navigate("/my-appointments");
     } catch (error) {
-      toast.error(
-        error.response?.data?.message || "Failed to book appointment"
-      );
+      const errorCode = error.response?.data?.errorCode;
+      const errorMessage = error.response?.data?.message;
+
+      // Slot aging errors - refresh slots and show specific message
+      const slotAgingErrors = [
+        "SLOT_PAST",
+        "SLOT_TOO_SOON",
+        "SLOT_BOOKED",
+        "SLOT_TOO_FAR",
+        "SLOT_NOT_FOUND",
+      ];
+
+      if (slotAgingErrors.includes(errorCode)) {
+        toast.error(
+          errorMessage || "Slot is no longer available. Refreshing..."
+        );
+        // Clear selected time and refresh slots
+        setSelectedTime(null);
+        fetchAvailableSlots();
+      } else {
+        toast.error(errorMessage || "Failed to book appointment");
+      }
       console.error(error);
     } finally {
       setSubmitting(false);
@@ -507,7 +526,8 @@ const BookAppointment = () => {
                       const isAvailable = slot.status === "available";
                       const isBooked = slot.status === "booked";
                       const isPast = slot.status === "past";
-                      const isUnavailable = slot.status === "unavailable";
+                      const isTooSoon = slot.status === "too-soon";
+                      const isTooFar = slot.status === "too-far";
 
                       return (
                         <div
@@ -520,8 +540,10 @@ const BookAppointment = () => {
                               ? "border-primary-600 bg-primary-50"
                               : isAvailable
                               ? "hover:border-primary-500 cursor-pointer bg-white"
-                              : isUnavailable
+                              : isTooSoon
                               ? "bg-amber-50 border-amber-200 cursor-not-allowed opacity-80"
+                              : isTooFar
+                              ? "bg-purple-50 border-purple-200 cursor-not-allowed opacity-80"
                               : isBooked
                               ? "bg-gray-200 border-gray-200 cursor-not-allowed opacity-75"
                               : "bg-gray-100 border-gray-100 cursor-not-allowed opacity-50"
@@ -531,17 +553,24 @@ const BookAppointment = () => {
                             className={`text-center font-medium text-xs ${
                               isAvailable
                                 ? "text-gray-900"
-                                : isUnavailable
+                                : isTooSoon
                                 ? "text-amber-700"
+                                : isTooFar
+                                ? "text-purple-700"
                                 : "text-gray-500"
                             }`}
                           >
                             {formatTime(slot.startTime)} -{" "}
                             {formatTime(slot.endTime)}
                           </div>
-                          {isUnavailable && (
+                          {isTooSoon && (
                             <div className="text-xs text-amber-600 font-medium mt-1">
                               Too Soon
+                            </div>
+                          )}
+                          {isTooFar && (
+                            <div className="text-xs text-purple-600 font-medium mt-1">
+                              Too Far
                             </div>
                           )}
                           {isBooked && (

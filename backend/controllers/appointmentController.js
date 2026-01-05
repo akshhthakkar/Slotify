@@ -15,14 +15,19 @@ const {
   timeToMinutes,
 } = require("../utils/availabilityCalculator");
 const {
-  sendAppointmentConfirmation,
-  sendCancellationEmail,
-  sendRescheduleEmail,
-  sendCustomerBookingConfirmationEmail,
   sendProviderBookingNotificationEmail,
   sendProviderCancellationEmail,
+  sendCustomerBookingConfirmationEmail,
+  sendRescheduleEmail,
+  sendProviderRescheduleEmail,
+  sendCancellationEmail,
 } = require("../utils/emailService");
 const { format } = require("date-fns");
+const { getNowInBusinessTZ } = require("../utils/timeUtils");
+const {
+  createSlotError,
+  getErrorCodeFromStatus,
+} = require("../utils/slotErrors");
 
 /**
  * @route   POST /api/appointments
@@ -164,6 +169,7 @@ const createAppointment = async (req, res, next) => {
     }
 
     // STRICT SLOT VALIDATION: Ensure the requested slot is a valid system-generated slot
+    // STRICT SLOT VALIDATION: Ensure the requested slot is a valid system-generated slot
     const slotValidation = await validateSlotExists(
       businessId,
       serviceId,
@@ -173,6 +179,7 @@ const createAppointment = async (req, res, next) => {
     if (!slotValidation.valid) {
       return res.status(400).json({
         success: false,
+        errorCode: slotValidation.errorCode || "SLOT_VALIDATION_FAILED",
         message: slotValidation.error,
       });
     }
@@ -191,9 +198,16 @@ const createAppointment = async (req, res, next) => {
     if (!available) {
       return res.status(400).json({
         success: false,
+        errorCode: "SLOT_BOOKED",
         message: "This time slot is no longer available",
       });
     }
+
+    // Calculate blockedUntil (endTime + bufferTime)
+    const bufferMinutes = service.bufferTime || 0;
+    const [endHours, endM] = endTime.split(":").map(Number);
+    const blockedUntilDate = new Date(aptDateFaceValue);
+    blockedUntilDate.setHours(endHours, endM + bufferMinutes, 0, 0);
 
     // Create appointment
     const appointment = await Appointment.create({
@@ -204,10 +218,11 @@ const createAppointment = async (req, res, next) => {
       appointmentDate: aptDateFaceValue,
       startTime,
       endTime,
+      blockedUntil: blockedUntilDate,
       notes,
       status: business.bookingSettings.requiresCustomerApproval
         ? "pending"
-        : "scheduled",
+        : APPOINTMENT_STATUS.SCHEDULED,
       createdBy: "customer",
     });
 
@@ -354,7 +369,10 @@ const getAppointments = async (req, res, next) => {
     }
 
     const appointments = await Appointment.find(query)
-      .populate("businessId", "name logo contactEmail contactPhone")
+      .populate(
+        "businessId",
+        "name logo contactEmail contactPhone bookingSettings"
+      )
       .populate("customerId", "name email phone profilePicture")
       .populate("serviceId", "name duration price")
       .populate("staffId", "name specialization")
@@ -393,7 +411,10 @@ const getAppointments = async (req, res, next) => {
 const getAppointmentById = async (req, res, next) => {
   try {
     const appointment = await Appointment.findById(req.params.id)
-      .populate("businessId", "name logo contactEmail contactPhone address")
+      .populate(
+        "businessId",
+        "name logo contactEmail contactPhone address bookingSettings"
+      )
       .populate("customerId", "name email phone profilePicture")
       .populate("serviceId", "name description duration price")
       .populate("staffId", "name email phone profilePicture")
@@ -467,7 +488,7 @@ const cancelAppointment = async (req, res, next) => {
     }
 
     // Check if already cancelled
-    if (appointment.status === "cancelled") {
+    if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
       return res.status(400).json({
         success: false,
         message: "Appointment is already cancelled",
@@ -492,7 +513,7 @@ const cancelAppointment = async (req, res, next) => {
       const [hours, minutes] = appointment.startTime.split(":").map(Number);
       aptDateTime.setHours(hours, minutes, 0, 0);
 
-      const now = new Date();
+      const now = getNowInBusinessTZ(appointment.businessId.timeZone);
       const hoursUntilAppointment = (aptDateTime - now) / (1000 * 60 * 60);
 
       if (
@@ -604,13 +625,14 @@ const cancelAppointment = async (req, res, next) => {
 
 /**
  * @route   POST /api/appointments/:id/reschedule
- * @desc    Reschedule appointment
+ * @desc    Reschedule appointment (update in-place, NOT create new)
  * @access  Private (Customer or Admin)
  */
 const rescheduleAppointment = async (req, res, next) => {
   try {
     const { newDate, newStartTime, newStaffId } = req.body;
 
+    // 1. Basic input validation
     if (!newDate || !newStartTime) {
       return res.status(400).json({
         success: false,
@@ -618,10 +640,11 @@ const rescheduleAppointment = async (req, res, next) => {
       });
     }
 
+    // 2. Fetch appointment with all necessary data
     const appointment = await Appointment.findById(req.params.id)
-      .populate("businessId", "name bookingSettings")
+      .populate("businessId", "name bookingSettings contactEmail")
       .populate("customerId", "name email")
-      .populate("serviceId", "name duration")
+      .populate("serviceId", "name duration price")
       .populate("staffId", "name");
 
     if (!appointment) {
@@ -631,7 +654,24 @@ const rescheduleAppointment = async (req, res, next) => {
       });
     }
 
-    // Verify access
+    // 3. Walk-in check (MOVED UP) - walk-ins cannot be rescheduled via this API
+    if (appointment.isWalkIn) {
+      return res.status(400).json({
+        success: false,
+        message: "Walk-in appointments cannot be rescheduled",
+      });
+    }
+
+    // 4. Verify access (ownership & role check)
+    // Safe to access customerId now as it's not a walk-in
+    if (!appointment.customerId) {
+      console.error("Reschedule Error: Appointment has no customerId");
+      return res.status(500).json({
+        success: false,
+        message: "Data integrity error: No customer attached",
+      });
+    }
+
     const isCustomer =
       appointment.customerId._id.toString() === req.user._id.toString();
     const isAdmin =
@@ -645,71 +685,70 @@ const rescheduleAppointment = async (req, res, next) => {
       });
     }
 
-    // Check if can reschedule
-    if (appointment.status !== "scheduled") {
+    // 4c. Reschedule count limit
+    const maxReschedules =
+      appointment.businessId.bookingSettings?.maxReschedulesPerAppointment || 2;
+    if (appointment.rescheduleCount >= maxReschedules) {
       return res.status(400).json({
         success: false,
-        message: "Only scheduled appointments can be rescheduled",
+        message: `Maximum reschedule limit (${maxReschedules}) reached`,
       });
     }
 
-    // Check reschedule window
+    // 5. Time-based validation
+    const aptDateTime = new Date(appointment.appointmentDate);
+    const [aptHours, aptMinutes] = appointment.startTime.split(":").map(Number);
+    aptDateTime.setHours(aptHours, aptMinutes, 0, 0);
+
+    const now = getNowInBusinessTZ(appointment.businessId.timeZone);
+
+    // 5a. Cannot reschedule past appointments
+    if (aptDateTime <= now) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot reschedule past or ongoing appointments",
+      });
+    }
+
+    // 5b. Reschedule window check (only for customers, admins can override)
     if (isCustomer && !isAdmin) {
-      const aptDateTime = new Date(appointment.appointmentDate);
-      const [hours, minutes] = appointment.startTime.split(":").map(Number);
-      aptDateTime.setHours(hours, minutes, 0, 0);
-
-      const now = new Date();
       const hoursUntilAppointment = (aptDateTime - now) / (1000 * 60 * 60);
+      const rescheduleWindow =
+        appointment.businessId.bookingSettings?.rescheduleWindow || 1;
 
-      if (
-        hoursUntilAppointment <
-        appointment.businessId.bookingSettings.rescheduleWindow
-      ) {
+      if (hoursUntilAppointment < rescheduleWindow) {
         return res.status(400).json({
           success: false,
-          message: `Appointments must be rescheduled at least ${appointment.businessId.bookingSettings.rescheduleWindow} hours in advance`,
+          errorCode: "RESCHEDULE_WINDOW_VIOLATION",
+          message: `Appointments must be rescheduled at least ${rescheduleWindow} hours in advance`,
         });
       }
     }
 
-    // Check reschedule count limit
-    if (
-      appointment.rescheduleCount >=
-      appointment.businessId.bookingSettings.maxReschedulesPerAppointment
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: `Maximum reschedule limit (${appointment.businessId.bookingSettings.maxReschedulesPerAppointment}) reached`,
-      });
-    }
+    // 6. Determine target staff
+    // 6. Determine target staff (Safe fallback: New -> Original -> Assigned by Slot)
+    const targetStaffId =
+      newStaffId ?? appointment.staffId?._id ?? slotValidation.staffId;
 
-    // Use new staff or keep existing
-    const targetStaffId = newStaffId || appointment.staffId._id;
-
-    // Calculate end time
-    const startMinutes = timeToMinutes(newStartTime);
-    const endMinutes = startMinutes + appointment.serviceId.duration;
-    const newEndTime = `${Math.floor(endMinutes / 60)
-      .toString()
-      .padStart(2, "0")}:${(endMinutes % 60).toString().padStart(2, "0")}`;
-
-    // STRICT SLOT VALIDATION: Ensure the new slot is a valid system-generated slot
+    // 7. SLOT VALIDATION (CRITICAL)
+    // 7a. Validate the slot exists and is a valid system-generated slot
     const slotValidation = await validateSlotExists(
       appointment.businessId._id,
       appointment.serviceId._id,
       new Date(newDate),
       newStartTime
     );
+
     if (!slotValidation.valid) {
       return res.status(400).json({
         success: false,
-        message: slotValidation.error,
+        errorCode: slotValidation.errorCode || "SLOT_VALIDATION_FAILED",
+        message: slotValidation.error || "Invalid time slot",
       });
     }
 
-    // Check if new slot is available with specific staff
-    const available = await isSlotAvailable(
+    // 7b. Check if slot is available (Buffer-Aware Check)
+    const isAvailable = await isSlotAvailable(
       appointment.businessId._id,
       targetStaffId,
       new Date(newDate),
@@ -717,89 +756,185 @@ const rescheduleAppointment = async (req, res, next) => {
       appointment.serviceId.duration
     );
 
-    if (!available) {
+    if (!isAvailable) {
       return res.status(400).json({
         success: false,
-        message: "New time slot is not available",
+        errorCode: "SLOT_BOOKED",
+        message: "This time slot is no longer available",
       });
     }
 
-    // Save old details for email
+    // Calculate new blockedUntil
+    const serviceDuration = appointment.serviceId.duration;
+    const bufferTime = appointment.serviceId.bufferTime || 0;
+    const [startH, startM] = newStartTime.split(":").map(Number);
+    const startTotal = startH * 60 + startM;
+    const endTotal = startTotal + serviceDuration;
+
+    // safe calculation for endTime string
+    const endH = Math.floor(endTotal / 60);
+    const endM = endTotal % 60;
+    const newEndTime = `${String(endH).padStart(2, "0")}:${String(
+      endM
+    ).padStart(2, "0")}`;
+
+    // valid blockedUntil date
+    const blockedUntilDate = new Date(newDate);
+    blockedUntilDate.setHours(Math.floor((endTotal + bufferTime) / 60));
+    blockedUntilDate.setMinutes((endTotal + bufferTime) % 60);
+
+    // 9. Save old details for email and audit
     const oldDate = format(
       new Date(appointment.appointmentDate),
       "EEEE, MMMM d, yyyy"
     );
     const oldTime = appointment.startTime;
+    const oldStaffId = appointment.staffId._id;
 
-    // Mark old appointment as rescheduled
-    appointment.status = "rescheduled";
+    // 10. ATOMIC UPDATE - Update the same appointment document
+    appointment.appointmentDate = new Date(newDate);
+    appointment.startTime = newStartTime;
+    appointment.endTime = newEndTime;
+    appointment.blockedUntil = blockedUntilDate;
+    appointment.staffId = targetStaffId;
+    appointment.rescheduleCount += 1;
     appointment.rescheduledAt = new Date();
+    appointment.rescheduledBy = isAdmin ? "admin" : "customer";
+    appointment.isRescheduled = true;
 
-    // Create new appointment
-    const newAppointment = await Appointment.create({
-      businessId: appointment.businessId._id,
-      customerId: appointment.customerId._id,
-      serviceId: appointment.serviceId._id,
-      staffId: targetStaffId,
-      appointmentDate: new Date(newDate),
-      startTime: newStartTime,
-      endTime: newEndTime,
-      notes: appointment.notes,
-      status: "scheduled",
-      isRescheduled: true,
-      rescheduledFrom: appointment._id,
-      rescheduleCount: appointment.rescheduleCount + 1,
-      createdBy: "customer",
-    });
+    // Reset reminder flags since date/time changed
+    appointment.reminderSent = {
+      day: false,
+      hours: false,
+    };
 
-    // Link appointments
-    appointment.rescheduledTo = newAppointment._id;
-    await appointment.save();
-
-    // Send reschedule email
-    const newStaff = await User.findById(targetStaffId);
-    try {
-      await sendRescheduleEmail(appointment.customerId.email, {
-        customerName: appointment.customerId.name,
-        businessName: appointment.businessId.name,
-        serviceName: appointment.serviceId.name,
-        oldDate,
-        oldTime,
+    // Add audit log entry
+    appointment.actionLog.push({
+      action: "rescheduled",
+      performedBy: isAdmin ? "admin" : "customer",
+      performedAt: new Date(),
+      metadata: {
+        oldDate: oldDate,
+        oldTime: oldTime,
         newDate: format(new Date(newDate), "EEEE, MMMM d, yyyy"),
         newTime: newStartTime,
-        staffName: newStaff.name,
-      });
-    } catch (emailError) {
-      console.error("Email sending failed:", emailError);
+        oldStaffId: oldStaffId.toString(),
+        newStaffId: targetStaffId.toString(),
+      },
+    });
+
+    // Prepare email details BEFORE saving (to avoid potential depopulation)
+    const emailDetails = {
+      customerEmail: appointment.customerId?.email,
+      customerName: appointment.customerId?.name,
+      businessName: appointment.businessId?.name,
+      contactEmail: appointment.businessId?.contactEmail,
+      serviceName: appointment.serviceId?.name,
+      location:
+        appointment.businessId?.address?.fullAddress || "Business Location",
+    };
+
+    // FALLBACK: If customer email missing from population but requester IS the customer, use their current profile
+    if (!emailDetails.customerEmail && isCustomer && req.user?.email) {
+      console.log("Reschedule Email: Fallback to req.user email details");
+      emailDetails.customerEmail = req.user.email;
+      emailDetails.customerName = req.user.name;
     }
 
-    // Create notifications
+    await appointment.save();
+
+    // 11. Send notifications
+    // Get staff name for email
+    const targetStaff = await Staff.findById(targetStaffId);
+    const staffName = targetStaff?.name || "Staff";
+
+    // Send email to customer
+    let emailStatus = "not_attempted";
+
+    if (emailDetails.customerEmail) {
+      try {
+        console.log(
+          `Attempting to send reschedule email to: ${emailDetails.customerEmail}`
+        );
+        await sendRescheduleEmail(emailDetails.customerEmail, {
+          customerName: emailDetails.customerName,
+          businessName: emailDetails.businessName,
+          serviceName: emailDetails.serviceName,
+          oldDate,
+          oldTime,
+          newDate: format(new Date(newDate), "EEEE, MMMM d, yyyy"),
+          newTime: newStartTime,
+          staffName,
+          location: emailDetails.location,
+        });
+        emailStatus = "sent";
+        console.log("Reschedule email sent successfully");
+      } catch (emailError) {
+        console.error("Customer reschedule email failed:", emailError);
+        emailStatus = "failed: " + emailError.message;
+      }
+    } else {
+      console.warn(
+        "Reschedule Email Skipped: No customer email found in details",
+        emailDetails
+      );
+      emailStatus = "skipped_no_email";
+    }
+
+    // Send email to business/provider
+    try {
+      if (emailDetails.contactEmail) {
+        await sendProviderRescheduleEmail(emailDetails.contactEmail, {
+          customerName: emailDetails.customerName,
+          customerEmail: emailDetails.customerEmail,
+          businessName: emailDetails.businessName,
+          serviceName: emailDetails.serviceName,
+          oldDate,
+          oldTime,
+          newDate: format(new Date(newDate), "EEEE, MMMM d, yyyy"),
+          newTime: newStartTime,
+          staffName,
+          bookingId: appointment._id.toString(),
+          rescheduledBy: isAdmin ? "Business Admin" : "Customer",
+        });
+      }
+    } catch (emailError) {
+      console.error("Provider reschedule email failed:", emailError);
+    }
+
+    // Create in-app notifications
+    // Use robust ID access in case appointment was depopulated by save()
+    const customerId = appointment.customerId?._id || appointment.customerId;
+
     await Notification.create({
-      userId: appointment.customerId._id,
+      userId: customerId,
       type: "appointment_rescheduled",
       title: "Appointment Rescheduled",
       message: `Your appointment has been rescheduled to ${format(
         new Date(newDate),
         "MMM d"
       )} at ${newStartTime}.`,
-      appointmentId: newAppointment._id,
+      appointmentId: appointment._id,
     });
 
-    await Notification.create({
-      userId: targetStaffId,
-      type: "appointment_rescheduled",
-      title: "Appointment Rescheduled",
-      message: `Appointment with ${
-        appointment.customerId.name
-      } has been rescheduled to ${format(
-        new Date(newDate),
-        "MMM d"
-      )} at ${newStartTime}.`,
-      appointmentId: newAppointment._id,
-    });
+    if (targetStaffId) {
+      await Notification.create({
+        userId: targetStaffId,
+        type: "appointment_rescheduled",
+        title: "Appointment Rescheduled",
+        message: `Appointment with ${
+          emailDetails.customerName || "Customer"
+        } has been rescheduled to ${format(
+          new Date(newDate),
+          "MMM d"
+        )} at ${newStartTime}.`,
+        appointmentId: appointment._id,
+      });
+    }
 
-    const populatedAppointment = await Appointment.findById(newAppointment._id)
-      .populate("businessId", "name logo")
+    // 12. Return updated appointment
+    const populatedAppointment = await Appointment.findById(appointment._id)
+      .populate("businessId", "name logo bookingSettings")
       .populate("customerId", "name email phone")
       .populate("serviceId", "name duration price")
       .populate("staffId", "name email profilePicture");
@@ -987,16 +1122,26 @@ const markNoShow = async (req, res, next) => {
     }
 
     // Validate no-show can only be marked after appointment end time
-    const aptDateTime = new Date(appointment.appointmentDate);
-    const [endHours, endMinutes] = (appointment.endTime || "23:59")
-      .split(":")
-      .map(Number);
-    aptDateTime.setHours(endHours, endMinutes, 0, 0);
+    // Validate no-show can only be marked after appointment end time + buffer
+    const now = getNowInBusinessTZ(appointment.businessId.timeZone);
 
-    if (new Date() < aptDateTime) {
+    // Use blockedUntil if available, otherwise calculate from endTime + buffer (if any)
+    let blockedUntil = appointment.blockedUntil;
+    if (!blockedUntil) {
+      const aptDate = new Date(appointment.appointmentDate);
+      const [endHours, endMinutes] = (appointment.endTime || "23:59")
+        .split(":")
+        .map(Number);
+      const bufferMins = appointment.serviceId.bufferTime || 0;
+      blockedUntil = new Date(aptDate);
+      blockedUntil.setHours(endHours, endMinutes + bufferMins, 0, 0);
+    }
+
+    if (now < blockedUntil) {
       return res.status(400).json({
         success: false,
-        message: "No-show can only be marked after the appointment end time",
+        message:
+          "No-show can only be marked after the appointment (plus buffer) has ended",
       });
     }
 
@@ -1054,8 +1199,15 @@ const createWalkInAppointment = async (req, res, next) => {
     }
 
     // Get current time details
-    const now = new Date();
-    // Use server time as "appointmentDate" (face value)
+    // Get current time details in Business Timezone
+    const business = await Business.findById(businessId);
+    if (!business) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Business not found" });
+    }
+
+    const now = getNowInBusinessTZ(business.timeZone);
     const appointmentDate = new Date(now);
     appointmentDate.setHours(0, 0, 0, 0);
 
@@ -1065,9 +1217,10 @@ const createWalkInAppointment = async (req, res, next) => {
       .toString()
       .padStart(2, "0")}`;
 
-    // Calculate end time
+    // Calculate end time and blockedUntil
     const startTotalMinutes = hours * 60 + minutes;
     const endTotalMinutes = startTotalMinutes + service.duration;
+    const bufferMins = service.bufferTime || 0;
 
     // Simple minutes to HH:MM helper
     const toTimeStr = (totalMins) => {
@@ -1080,6 +1233,11 @@ const createWalkInAppointment = async (req, res, next) => {
 
     const endTime = toTimeStr(endTotalMinutes);
 
+    // Calculate blockedUntil
+    const blockedUntilDate = new Date(appointmentDate);
+    blockedUntilDate.setHours(Math.floor((endTotalMinutes + bufferMins) / 60));
+    blockedUntilDate.setMinutes((endTotalMinutes + bufferMins) % 60);
+
     // Create completed appointment
     const appointment = await Appointment.create({
       businessId,
@@ -1089,6 +1247,7 @@ const createWalkInAppointment = async (req, res, next) => {
       appointmentDate,
       startTime,
       endTime,
+      blockedUntil: blockedUntilDate,
       status: APPOINTMENT_STATUS.COMPLETED,
       completedAt: now,
       completedBy: "admin",
@@ -1121,4 +1280,14 @@ const createWalkInAppointment = async (req, res, next) => {
     next(error);
   }
 };
-module.exports = { createAppointment, getAppointments, getAppointmentById, cancelAppointment, rescheduleAppointment, getAvailableSlots, completeAppointment, markNoShow, createWalkInAppointment };
+module.exports = {
+  createAppointment,
+  getAppointments,
+  getAppointmentById,
+  cancelAppointment,
+  rescheduleAppointment,
+  getAvailableSlots,
+  completeAppointment,
+  markNoShow,
+  createWalkInAppointment,
+};

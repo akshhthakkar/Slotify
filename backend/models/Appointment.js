@@ -42,6 +42,13 @@ const appointmentSchema = new mongoose.Schema(
       required: [true, "End time is required"],
       match: [/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format. Use HH:MM"],
     },
+    blockedUntil: {
+      type: Date,
+      required: false, // Optional for legacy appointments
+      index: true,
+      comment:
+        "Buffer-inclusive end time (endTime + bufferTime) for conflict detection and no-shows",
+    },
     status: {
       type: String,
       enum: getAllStatuses(),
@@ -83,6 +90,10 @@ const appointmentSchema = new mongoose.Schema(
     rescheduleCount: {
       type: Number,
       default: 0,
+    },
+    rescheduledBy: {
+      type: String,
+      enum: ["customer", "admin"],
     },
     reminderSent: {
       day: {

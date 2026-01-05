@@ -143,12 +143,10 @@ function App() {
                 }
               />
               <Route
-                path="/reschedule/:appointmentId"
+                path="/appointments/:id/reschedule"
                 element={
                   <ProtectedRoute>
-                    <StrictCustomerRoute>
-                      <RescheduleAppointment />
-                    </StrictCustomerRoute>
+                    <RescheduleAppointment />
                   </ProtectedRoute>
                 }
               />

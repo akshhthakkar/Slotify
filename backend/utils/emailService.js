@@ -1,4 +1,4 @@
-const nodemailer = require("nodemailer");
+﻿const nodemailer = require("nodemailer");
 
 // Create transporter
 const transporter = nodemailer.createTransport({
@@ -276,7 +276,7 @@ const sendCancellationEmail = async (email, appointmentDetails) => {
       <body>
         <div class="container">
           <div class="header">
-            <h1>Appointment Cancelled</h1>
+            <h1>❌ Appointment Cancelled</h1>
           </div>
           <div class="content">
             <p>Hi ${customerName},</p>
@@ -335,7 +335,7 @@ const sendRescheduleEmail = async (email, appointmentDetails) => {
       <body>
         <div class="container">
           <div class="header">
-            <h1>📅 Appointment Rescheduled</h1>
+            <h1>🔄 Appointment Rescheduled</h1>
           </div>
           <div class="content">
             <p>Hi ${customerName},</p>
@@ -423,7 +423,7 @@ const sendCustomerBookingConfirmationEmail = async (email, details) => {
                 <span class="value">${serviceName}</span>
               </div>
               <div class="detail-row">
-                <span class="label">📅 Date: </span>
+                                <span class="label">🗓️ Date: </span>
                 <span class="value">${date}</span>
               </div>
               <div class="detail-row">
@@ -505,7 +505,7 @@ const sendProviderBookingNotificationEmail = async (email, details) => {
   const mailOptions = {
     from: process.env.EMAIL_FROM,
     to: email,
-    subject: `📅 New Booking: ${serviceName} with ${customerName}`,
+    subject: `✨ New Booking: ${serviceName} with ${customerName}`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -538,7 +538,7 @@ const sendProviderBookingNotificationEmail = async (email, details) => {
       <body>
         <div class="container">
           <div class="header">
-            <h1>📅 New Appointment Booked</h1>
+            <h1>✨ New Appointment Booked</h1>
             <p>A customer has just booked an appointment!</p>
           </div>
           <div class="content">
@@ -549,18 +549,18 @@ const sendProviderBookingNotificationEmail = async (email, details) => {
               <div class="section-title">👤 Customer Information</div>
               <div class="detail-row">
                 <span class="label">Name</span>
-                <span class="value">${customerName}</span>
+                <span class="value">: ${customerName}</span>
               </div>
               <div class="detail-row">
                 <span class="label">Email</span>
-                <span class="value">${customerEmail}</span>
+                <span class="value">:${customerEmail}</span>
               </div>
               ${
                 customerPhone
                   ? `
               <div class="detail-row">
                 <span class="label">Phone</span>
-                <span class="value">${customerPhone}</span>
+                <span class="value">: ${customerPhone}</span>
               </div>
               `
                   : ""
@@ -571,26 +571,26 @@ const sendProviderBookingNotificationEmail = async (email, details) => {
               <div class="section-title">📋 Appointment Details</div>
               <div class="detail-row">
                 <span class="label">Service</span>
-                <span class="value">${serviceName}</span>
+                <span class="value">: ${serviceName}</span>
               </div>
               <div class="detail-row">
                 <span class="label">Date</span>
-                <span class="value">${date}</span>
+                <span class="value">:${date}</span>
               </div>
               <div class="detail-row">
                 <span class="label">Time</span>
-                <span class="value">${startTime} – ${endTime}</span>
-              </div>
+                <span class="value">: ${startTime} – ${endTime}</span>
+              </div>  
               <div class="detail-row">
                 <span class="label">Duration</span>
-                <span class="value">${duration} minutes</span>
+                <span class="value">: ${duration} minutes</span>
               </div>
               ${
                 staffName
                   ? `
               <div class="detail-row">
                 <span class="label">Assigned Staff</span>
-                <span class="value">${staffName}</span>
+                <span class="value">: ${staffName}</span>
               </div>
               `
                   : ""
@@ -758,6 +758,127 @@ const sendProviderCancellationEmail = async (email, details) => {
   return await transporter.sendMail(mailOptions);
 };
 
+/**
+ * Send reschedule notification email to PROVIDER/BUSINESS
+ * Professional tone notifying about rescheduled appointment
+ */
+const sendProviderRescheduleEmail = async (email, details) => {
+  const {
+    customerName,
+    customerEmail,
+    businessName,
+    serviceName,
+    oldDate,
+    oldTime,
+    newDate,
+    newTime,
+    staffName,
+    bookingId,
+    rescheduledBy,
+  } = details;
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM,
+    to: email,
+    subject: `🔄 Appointment Rescheduled: ${serviceName} with ${customerName}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f5f5f5; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 35px 30px; text-align: center; border-radius: 12px 12px 0 0; }
+          .header h1 { margin: 0; font-size: 26px; font-weight: 600; }
+          .header p { margin: 8px 0 0 0; opacity: 0.9; font-size: 15px; }
+          .content { background: #ffffff; padding: 35px; border-radius: 0 0 12px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+          .section { background: #f8fafc; padding: 22px; border-radius: 10px; margin: 20px 0; border: 1px solid #e2e8f0; }
+          .section-title { font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+          .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+          .detail-row:last-child { border-bottom: none; }
+          .label { color: #64748b; font-size: 14px; }
+          .value { font-weight: 600; color: #1e293b; font-size: 14px; text-align: right; }
+          .time-change { background: #f0f9ff; border: 1px solid #bae6fd; padding: 20px; border-radius: 10px; margin: 20px 0; }
+          .old-time { text-decoration: line-through; color: #9ca3af; font-size: 15px; margin-bottom: 8px; }
+          .new-time { color: #059669; font-weight: 700; font-size: 16px; }
+          .arrow { color: #3b82f6; font-size: 20px; margin: 5px 0; }
+          .booking-id { background: #eff6ff; border: 1px solid #93c5fd; padding: 14px 18px; border-radius: 8px; text-align: center; margin-top: 18px; }
+          .booking-id strong { color: #1e40af; }
+          .rescheduled-by { background: #fef3c7; border: 1px solid #fcd34d; padding: 10px 15px; border-radius: 6px; text-align: center; margin: 15px 0; color: #92400e; font-size: 14px; }
+          .footer { text-align: center; margin-top: 25px; color: #94a3b8; font-size: 13px; }
+          .footer p { margin: 5px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+                        <h1> Appointment Rescheduled</h1>
+            <p>An appointment has been rescheduled</p>
+          </div>
+          <div class="content">
+            <p style="font-size: 16px; color: #475569; margin-bottom: 25px;">Hello <strong>${businessName}</strong> team,</p>
+            <p style="color: #64748b;">The following appointment has been rescheduled:</p>
+            
+            <div class="rescheduled-by">
+              Rescheduled by: <strong>${rescheduledBy || "Customer"}</strong>
+            </div>
+
+            <div class="section">
+              <div class="section-title">👤 Customer Information</div>
+              <div class="detail-row">
+                <span class="label">Name</span>
+                <span class="value">${customerName}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Email</span>
+                <span class="value">${customerEmail}</span>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">📋 Appointment Details</div>
+              <div class="detail-row">
+                <span class="label">Service</span>
+                <span class="value">${serviceName}</span>
+              </div>
+              ${
+                staffName
+                  ? `
+              <div class="detail-row">
+                <span class="label">Assigned Staff</span>
+                <span class="value">${staffName}</span>
+              </div>
+              `
+                  : ""
+              }
+              <div class="booking-id">
+                <strong>Booking ID:</strong> ${bookingId}
+              </div>
+            </div>
+
+            <div class="time-change">
+              <div style="text-align: center;">
+                <div class="old-time">Previous: ${oldDate} at ${oldTime}</div>
+                <div class="arrow">↓</div>
+                <div class="new-time">New: ${newDate} at ${newTime}</div>
+              </div>
+            </div>
+
+            <p style="color: #64748b; font-size: 14px; text-align: center; margin-top: 25px;">The old time slot is now available for new bookings.</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated notification from Slotify.</p>
+            <p>© ${new Date().getFullYear()} Slotify. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  };
+
+  return await transporter.sendMail(mailOptions);
+};
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
@@ -765,6 +886,7 @@ module.exports = {
   sendAppointmentReminder,
   sendCancellationEmail,
   sendRescheduleEmail,
+  sendProviderRescheduleEmail,
   sendCustomerBookingConfirmationEmail,
   sendProviderBookingNotificationEmail,
   sendProviderCancellationEmail,

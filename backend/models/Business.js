@@ -132,7 +132,7 @@ const businessSchema = new mongoose.Schema(
       },
       rescheduleWindow: {
         type: Number,
-        default: 24, // hours
+        default: 1, // hours
       },
       maxReschedulesPerAppointment: {
         type: Number,

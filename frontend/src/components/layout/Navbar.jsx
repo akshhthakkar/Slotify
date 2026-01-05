@@ -78,6 +78,7 @@ const Navbar = () => {
                 {user?.role === "customer" && (
                   <Link to="/my-appointments">
                     <Button variant="ghost" size="medium">
+                      <Calendar className="w-4 h-4 mr-2" />
                       My Appointments
                     </Button>
                   </Link>
